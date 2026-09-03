@@ -1,0 +1,14 @@
+node_modules/
+*.tgz
+.DS_Store
+.env
+.env.*
+!.env.example
+.npmrc
+*.key
+*.p12
+*.pem
+*.pfx
+
+# Local release automation
+.agents/skills/pi-release/
