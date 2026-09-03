@@ -1,6 +1,6 @@
 {
 	"name": "pi-zen",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "A quiet Pi TUI on one switch: backgroundless messages, a rail editor, compact tool calls, and restrained reasoning",
 	"type": "module",
 	"packageManager": "pnpm@11.21.0",
@@ -29,6 +29,7 @@
 	"files": [
 		"extensions",
 		"src",
+		"screenshots",
 		"README.md",
 		"LICENSE"
 	],
