@@ -22,6 +22,8 @@ For real knowledge work, I like being an active participant. I want to understan
 
 ## Quick start
 
+Requires Pi 0.84.3 or newer.
+
 Install the extension from npm:
 
 ```sh

@@ -1,4 +1,4 @@
-import { Theme, type ThemeColor } from "@earendil-works/pi-coding-agent";
+import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
 
 /** Name used only while Zen's backgroundless projection is active. */
 export const BACKGROUNDLESS_THEME_NAME = "pi-zen:backgroundless";
@@ -53,11 +53,14 @@ const THEME_COLORS = [
 	"bashMode",
 ] as const satisfies ReadonlyArray<ThemeColor>;
 
-type ThemeBackground = Parameters<Theme["bg"]>[0];
+type ThemeBackground = Parameters<Theme["bg"]>[0] | "scrollbarThumb";
+
+type LegacyScrollbarTheme = {
+	readonly getBgAnsi: (color: ThemeBackground) => string;
+};
 
 const THEME_BACKGROUNDS = [
 	"selectedBg",
-	"scrollbarThumb",
 	"searchMatchBg",
 	"userMessageBg",
 	"customMessageBg",
@@ -98,11 +101,32 @@ function emptyBackgrounds(): BackgroundInput {
 	return Object.fromEntries(THEME_BACKGROUNDS.map((color) => [color, ""])) as BackgroundInput;
 }
 
+function captureScrollbarColors(
+	source: Theme,
+	foregroundAnsi: Map<ThemeColor, string>,
+	backgroundAnsi: Map<ThemeBackground, string>,
+): void {
+	let thumb: string;
+	try {
+		thumb = source.getFgAnsi("scrollbarThumb");
+	} catch (error) {
+		if (!(error instanceof Error) || error.message !== "Unknown theme color: scrollbarThumb") throw error;
+		// SAFETY: Pi 0.84.x reports this missing foreground because its thumb is a background token.
+		// The current Theme type omits that legacy key; its getter still checks the key at runtime.
+		const legacySource = source as LegacyScrollbarTheme;
+		backgroundAnsi.set("scrollbarThumb", legacySource.getBgAnsi("scrollbarThumb"));
+		return;
+	}
+	foregroundAnsi.set("scrollbarThumb", thumb);
+	foregroundAnsi.set("scrollbarTrack", source.getFgAnsi("scrollbarTrack"));
+}
+
 function makeThemeSnapshot(source: Theme, options: ThemeSnapshotOptions): Theme {
 	const foregroundAnsi = new Map<ThemeColor, string>();
 	const backgroundAnsi = new Map<ThemeBackground, string>();
 	for (const color of THEME_COLORS) foregroundAnsi.set(color, source.getFgAnsi(color));
 	for (const color of THEME_BACKGROUNDS) backgroundAnsi.set(color, source.getBgAnsi(color));
+	captureScrollbarColors(source, foregroundAnsi, backgroundAnsi);
 
 	// SAFETY: Pi created source, so its constructor is the runtime's Theme constructor. Using that exact constructor
 	// keeps instanceof checks valid when this source package has a different development copy of Pi installed.
@@ -120,16 +144,17 @@ function makeThemeSnapshot(source: Theme, options: ThemeSnapshotOptions): Theme 
 		if (ansi === undefined) throw new Error(`Unknown theme color: ${color}`);
 		return ansi;
 	};
-	snapshot.getBgAnsi = (color: ThemeBackground): string => {
+	const getBgAnsi = (color: ThemeBackground): string => {
 		if (options.suppressContentBackgrounds && CONTENT_BACKGROUNDS.has(color)) return "\x1b[49m";
 		const ansi = backgroundAnsi.get(color);
 		if (ansi === undefined) throw new Error(`Unknown theme background: ${color}`);
 		return ansi;
 	};
+	snapshot.getBgAnsi = getBgAnsi;
 	snapshot.fg = (color: ThemeColor, text: string): string => `${snapshot.getFgAnsi(color)}${text}\x1b[39m`;
 	snapshot.bg = (color: ThemeBackground, text: string): string => {
 		if (options.suppressContentBackgrounds && CONTENT_BACKGROUNDS.has(color)) return text;
-		return `${snapshot.getBgAnsi(color)}${text}\x1b[49m`;
+		return `${getBgAnsi(color)}${text}\x1b[49m`;
 	};
 
 	return snapshot;
@@ -148,7 +173,7 @@ export function snapshotTheme(source: Theme): Theme {
 /**
  * Keep the active theme while removing message and tool backgrounds.
  * Surface-specific body text falls back to the theme's terminal-safe base text;
- * selection, search, and scrollbar backgrounds remain as affordances.
+ * selection and search backgrounds, plus scrollbar colors, remain as affordances.
  *
  * @param source - Pi's currently active theme.
  * @returns A backgroundless projection of the active theme.
