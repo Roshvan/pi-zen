@@ -4,7 +4,7 @@ I built `pi-zen` because I wanted a minimal interface that made it easier to sta
 
 For real knowledge work, I like being an active participant. I want to understand what is happening between the AI and me so we can be good partners in making decisions. `pi-zen` gives me that space: clear responses, visible progress, and the useful parts of the session in a calm, visually appealing interface.
 
-`pi-zen` is a presentation extension for the [Pi](https://pi.dev) terminal interface. It removes visual clutter while preserving conversations, tool activity, reasoning, and session data. It adds compact tool summaries and diffs, a minimal editor rail, a quieter startup, and a calmer working indicator without changing tool execution or model prompts.
+`pi-zen` is a presentation extension for the [Pi](https://pi.dev) terminal interface. It removes visual clutter while preserving conversations, tool activity, reasoning, and session data. It adds compact tool summaries and diffs, a minimal editor rail, a quieter startup, a calmer working indicator, and a live reading of where the current request's time is going, without changing tool execution or model prompts.
 
 ## Showcase
 
@@ -19,6 +19,16 @@ For real knowledge work, I like being an active participant. I want to understan
 ### Coding cat demo
 
 ![Pi Zen coding cat demo](screenshots/pi-zen-coding-cat.gif)
+
+## While a request runs
+
+Above the editor, one dim line says where the time is going and updates as the request runs:
+
+```text
+7.2s thinking · 3.6s writing · ↑6.5k ↓5.8k
+```
+
+Thinking is the time the model spends reasoning, including the silence before it streams anything; writing is the time it spends producing text and tool calls. Time a tool spends running belongs to neither and is left out. The token counts follow Pi's footer: tokens sent, excluding cache reads and writes, and tokens produced, reasoning included. Both cover the whole request, however many turns it takes. A half of the work that took no measurable time is left out, so a model that does not stream its reasoning simply reads as writing. The final reading stays until the next request starts.
 
 ## Quick start
 

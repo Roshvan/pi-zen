@@ -16,6 +16,7 @@ import { type BuiltinToolOptions, registerCompactTools } from "../src/compact-to
 import { squeezeBlankLines } from "../src/markdown-compaction.ts";
 import { installBlankHeader } from "../src/silent-header.ts";
 import { thinkingTail, thinkingTailLineBudget } from "../src/thinking-tail.ts";
+import { TurnStatus } from "../src/turn-status.ts";
 import { installQuietIndicator, restoreDefaultIndicator } from "../src/working-indicator.ts";
 import { ZenEditor } from "../src/zen-editor.ts";
 
@@ -63,6 +64,7 @@ export default function zen(pi: ExtensionAPI): void {
 	let deferredThemeProjection: ReturnType<typeof setTimeout> | undefined;
 	let activeContext: ExtensionContext | undefined;
 	const grouper = new CallGrouper();
+	const turnStatus = new TurnStatus();
 
 	// Installing is idempotent on purpose: another extension can take the header
 	// or the editor at any time, so `/zen on` has to be able to claim them back.
@@ -122,6 +124,7 @@ export default function zen(pi: ExtensionAPI): void {
 		ctx.ui.setHeader(undefined);
 		ctx.ui.setEditorComponent(state.previousEditor);
 		restoreDefaultIndicator(ctx.ui);
+		turnStatus.clear(ctx);
 		state = { kind: "off" };
 	};
 
@@ -145,6 +148,28 @@ export default function zen(pi: ExtensionAPI): void {
 				if (state.kind === "on") install(ctx);
 			}, 0);
 		}
+	});
+
+	const zenActive = (ctx: ExtensionContext) => state.kind === "on" && ctx.mode === "tui";
+
+	pi.on("agent_start", (_event, ctx) => {
+		if (zenActive(ctx)) turnStatus.begin(ctx);
+	});
+
+	pi.on("message_start", (event, ctx) => {
+		if (zenActive(ctx)) turnStatus.open(event, ctx);
+	});
+
+	pi.on("message_update", (event, ctx) => {
+		if (zenActive(ctx)) turnStatus.update(event, ctx);
+	});
+
+	pi.on("message_end", (event, ctx) => {
+		if (zenActive(ctx)) turnStatus.commit(event, ctx);
+	});
+
+	pi.on("agent_end", (_event, ctx) => {
+		if (zenActive(ctx)) turnStatus.end(ctx);
 	});
 
 	pi.on("turn_end", () => {
