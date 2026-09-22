@@ -1,4 +1,6 @@
 node_modules/
+.devenv*
+.direnv/
 *.tgz
 .DS_Store
 .env

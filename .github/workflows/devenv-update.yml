@@ -1,0 +1,208 @@
+name: Devenv inputs
+
+on:
+  schedule:
+    - cron: "53 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: devenv-inputs
+  cancel-in-progress: false
+
+jobs:
+  update:
+    name: Update, validate, and merge
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      GH_TOKEN: ${{ secrets.DEVENV_UPDATE_TOKEN || github.token }}
+
+    steps:
+      - name: Check out default branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+      - name: Install Nix
+        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+      - name: Configure the devenv cache
+        uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866 # v17
+        with:
+          name: devenv
+      - name: Install devenv
+        run: nix profile add nixpkgs#devenv
+      - name: Capture the validated base and current tools
+        id: base
+        shell: bash
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          cp devenv.lock "$RUNNER_TEMP/devenv.lock.before"
+          devenv shell development-tool-versions |
+            grep -E '^(node|pnpm)=' > "$RUNNER_TEMP/tools.before"
+      - name: Update every configured input
+        run: devenv update
+      - name: Align the tracked Node pin
+        shell: bash
+        run: |
+          node_version=$(devenv shell -- node --version | tail -n 1)
+          printf '%s\n' "${node_version#v}" > .node-version
+      - name: Capture updated tools and report
+        shell: bash
+        run: |
+          devenv shell development-tool-versions |
+            grep -E '^(node|pnpm)=' > "$RUNNER_TEMP/tools.after"
+          python3 <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          def load_lock(path: str) -> dict:
+              return json.loads(Path(path).read_text())
+
+          def root_inputs(lock: dict) -> dict:
+              root = lock["root"]
+              return lock["nodes"][root].get("inputs", {})
+
+          def node_name(reference: object) -> str | None:
+              return reference if isinstance(reference, str) else None
+
+          def identity(lock: dict, reference: object) -> str:
+              name = node_name(reference)
+              if name is None:
+                  return json.dumps(reference, sort_keys=True)
+              node = lock["nodes"].get(name, {})
+              locked = node.get("locked", {})
+              revision = locked.get("rev") or locked.get("narHash") or locked.get("path") or "unlocked"
+              repository = "/".join(
+                  item for item in (locked.get("owner"), locked.get("repo")) if item
+              )
+              directory = locked.get("dir")
+              prefix = f"{repository}@" if repository else ""
+              suffix = f" ({directory})" if directory else ""
+              return f"{prefix}{revision}{suffix}"
+
+          def tool_versions(path: str) -> dict[str, str]:
+              versions = {}
+              for line in Path(path).read_text().splitlines():
+                  if "=" in line:
+                      name, value = line.split("=", 1)
+                      versions[name] = value
+              return versions
+
+          before = load_lock(os.path.join(os.environ["RUNNER_TEMP"], "devenv.lock.before"))
+          after = load_lock("devenv.lock")
+          before_inputs = root_inputs(before)
+          after_inputs = root_inputs(after)
+          names = sorted(set(before_inputs) | set(after_inputs))
+          moved = []
+          unchanged = []
+          for name in names:
+              old = identity(before, before_inputs.get(name))
+              new = identity(after, after_inputs.get(name))
+              target = unchanged if old == new else moved
+              target.append((name, old, new))
+
+          old_tools = tool_versions(os.path.join(os.environ["RUNNER_TEMP"], "tools.before"))
+          new_tools = tool_versions(os.path.join(os.environ["RUNNER_TEMP"], "tools.after"))
+          tool_names = sorted(set(old_tools) | set(new_tools))
+          sentence = (
+              f"devenv update checked {len(names)} locked inputs: "
+              f"{len(moved)} changed and {len(unchanged)} remained unchanged."
+          )
+          lines = [
+              "## Devenv input update",
+              "",
+              sentence,
+              "",
+              "### Moved inputs",
+              "",
+          ]
+          lines.extend(
+              f"- {name}: {old} -> {new}" for name, old, new in moved
+          )
+          if not moved:
+              lines.append("- None")
+          lines.extend(["", "### Checked, unchanged inputs", ""])
+          lines.extend(f"- {name}: {old}" for name, old, _ in unchanged)
+          if not unchanged:
+              lines.append("- None")
+          lines.extend(
+              [
+                  "",
+                  "### Development tools",
+                  "",
+                  "| Tool | Before | After | Result |",
+                  "| --- | --- | --- | --- |",
+              ]
+          )
+          for name in tool_names:
+              old = old_tools.get(name, "missing")
+              new = new_tools.get(name, "missing")
+              result = "unchanged" if old == new else "changed"
+              lines.append(f"| {name} | {old} | {new} | {result} |")
+          report = "\n".join(lines) + "\n"
+          Path(os.path.join(os.environ["RUNNER_TEMP"], "devenv-report.md")).write_text(report)
+          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a") as summary:
+              summary.write(report)
+          print(sentence)
+          PY
+      - name: Validate the updated environment
+        run: devenv test
+      - name: Detect lock changes
+        id: changes
+        shell: bash
+        run: |
+          changed=false
+          if ! git diff --quiet -- devenv.lock .node-version; then
+            changed=true
+          fi
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+      - name: Create or update the validated pull request
+        if: steps.changes.outputs.changed == 'true'
+        id: pull_request
+        shell: bash
+        run: |
+          branch=automation/devenv-inputs
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+            git fetch origin "$branch:refs/remotes/origin/$branch"
+          fi
+          git switch -C "$branch"
+          git add devenv.lock .node-version
+          git commit -m "chore(devenv): update inputs"
+          git push --force-with-lease origin "HEAD:refs/heads/$branch"
+          pr_url=$(gh pr list --base "$DEFAULT_BRANCH" --head "$branch" --state open --json url --jq '.[0].url // empty')
+          if [ -z "$pr_url" ]; then
+            pr_url=$(gh pr create               --base "$DEFAULT_BRANCH"               --head "$branch"               --title "chore(devenv): update inputs"               --body-file "$RUNNER_TEMP/devenv-report.md")
+          else
+            gh pr edit "$pr_url"               --title "chore(devenv): update inputs"               --body-file "$RUNNER_TEMP/devenv-report.md"
+          fi
+          echo "url=$pr_url" >> "$GITHUB_OUTPUT"
+          echo "head=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Merge the exact validated update
+        if: steps.changes.outputs.changed == 'true'
+        shell: bash
+        env:
+          EXPECTED_BASE: ${{ steps.base.outputs.sha }}
+          EXPECTED_HEAD: ${{ steps.pull_request.outputs.head }}
+          PR_URL: ${{ steps.pull_request.outputs.url }}
+        run: |
+          git fetch origin "$DEFAULT_BRANCH"
+          current_base=$(git rev-parse "origin/$DEFAULT_BRANCH")
+          if [ "$current_base" != "$EXPECTED_BASE" ]; then
+            echo "::error::The default branch advanced after validation; refusing to merge."
+            exit 1
+          fi
+          remote_head=$(git ls-remote origin refs/heads/automation/devenv-inputs | cut -f1)
+          pr_head=$(gh pr view "$PR_URL" --json headRefOid --jq .headRefOid)
+          if [ "$remote_head" != "$EXPECTED_HEAD" ] || [ "$pr_head" != "$EXPECTED_HEAD" ]; then
+            echo "::error::The update branch changed after validation; refusing to merge."
+            exit 1
+          fi
+          gh pr merge "$PR_URL" --squash --match-head-commit "$EXPECTED_HEAD"
