@@ -1,12 +1,12 @@
 import { type ExtensionAPI, getAgentDir } from "@earendil-works/pi-coding-agent";
 
+import { liveSentInk } from "../src/backgroundless-theme.ts";
 import { createCallRuns } from "../src/call-group.ts";
-import { squeezeBlankLines } from "../src/markdown-compaction.ts";
+import { orientMessage, thinkingLinesFor } from "../src/message-orientation.ts";
 import { carriedPromptHistory } from "../src/prompt-history.ts";
 import { silentHeader } from "../src/silent-header.ts";
 import { createStartupQuieting } from "../src/startup-quieting.ts";
 import { createThemeFollow } from "../src/theme-follow.ts";
-import { thinkingTail, thinkingTailLineBudget } from "../src/thinking-tail.ts";
 import { labelToolCall, toolInput } from "../src/tool-calls.ts";
 import { registerToolViews } from "../src/tool-views.ts";
 import { createTurnStatus } from "../src/turn-status.ts";
@@ -87,11 +87,10 @@ export default function zen(pi: ExtensionAPI): void {
 	pi.registerMarkdownTransformer((markdown, context) => {
 		if (!showsZen()) return markdown;
 		themeFollow.syncAfterRender();
-		const squeezed = squeezeBlankLines(markdown);
-		if (context.messageType === "assistant-thinking" && context.isStreaming) {
-			return thinkingTail(squeezed, thinkingTailLineBudget(process.stdout.rows));
-		}
-		return squeezed;
+		return orientMessage(markdown, context, {
+			ink: liveSentInk(),
+			thinkingLines: thinkingLinesFor(process.stdout.rows),
+		});
 	});
 
 	pi.registerCommand("zen", {

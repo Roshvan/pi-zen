@@ -1,5 +1,7 @@
 import type { Theme, ThemeBg, ThemeColor } from "@earendil-works/pi-coding-agent";
 
+import { PLAIN_INK, type SentInk } from "./message-orientation.ts";
+
 const CONTENT_BACKGROUNDS: ReadonlySet<ThemeBg> = new Set([
 	"userMessageBg",
 	"customMessageBg",
@@ -79,4 +81,16 @@ export function restoreLiveTheme(): void {
 	if (canvas === undefined) return;
 	quiet.delete(theme);
 	Object.assign(theme, canvas);
+}
+
+export function liveSentInk(): SentInk {
+	const theme = installedTheme();
+	if (theme === undefined) return PLAIN_INK;
+	const canvas = quietThemes().get(theme) ?? theme;
+	const wash = canvas.getBgAnsi.call(theme, "userMessageBg");
+	return {
+		words: theme.getFgAnsi("text"),
+		mark: theme.getFgAnsi("border"),
+		wash: wash === OPEN_CANVAS ? undefined : wash,
+	};
 }
