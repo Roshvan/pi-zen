@@ -7,9 +7,11 @@ import { silentHeader } from "../src/silent-header.ts";
 import { createStartupQuieting } from "../src/startup-quieting.ts";
 import { createThemeFollow } from "../src/theme-follow.ts";
 import { thinkingTail, thinkingTailLineBudget } from "../src/thinking-tail.ts";
+import { labelToolCall, toolInput } from "../src/tool-calls.ts";
 import { registerToolViews } from "../src/tool-views.ts";
 import { createTurnStatus } from "../src/turn-status.ts";
 import { phaseFromContent } from "../src/turn-timing.ts";
+import { createWorkStatus } from "../src/work-status.ts";
 import { zenEditorPart } from "../src/zen-editor.ts";
 import { createZenLifecycle } from "../src/zen-lifecycle.ts";
 import { carriedSwitch, zenCompletions } from "../src/zen-switch.ts";
@@ -19,12 +21,13 @@ export default function zen(pi: ExtensionAPI): void {
 	const runs = createCallRuns();
 	const history = carriedPromptHistory();
 	const turnStatus = createTurnStatus(Date.now);
+	const workStatus = createWorkStatus();
 	const themeFollow = createThemeFollow();
 	const lifecycle = createZenLifecycle({
 		zenSwitch,
 		history,
 		startup: createStartupQuieting(getAgentDir()),
-		parts: [silentHeader, zenEditorPart(history), turnStatus, themeFollow],
+		parts: [silentHeader, zenEditorPart(history), turnStatus, workStatus, themeFollow],
 	});
 	const showsZen = (): boolean => zenSwitch.look() === "zen";
 
@@ -39,6 +42,7 @@ export default function zen(pi: ExtensionAPI): void {
 	pi.on("agent_start", () => {
 		runs.close();
 		turnStatus.begin();
+		workStatus.begin();
 	});
 
 	pi.on("turn_start", () => {
@@ -54,11 +58,21 @@ export default function zen(pi: ExtensionAPI): void {
 		const phase = phaseFromContent(event.message.content);
 		if (phase === undefined) return;
 		turnStatus.produce(phase, event.message.usage);
+		workStatus.phase(phase);
 	});
 
 	pi.on("message_end", (event) => {
 		if (event.message.role !== "assistant") return;
 		turnStatus.commit(event.message.usage);
+		workStatus.phase("thinking");
+	});
+
+	pi.on("tool_execution_start", (event, ctx) => {
+		workStatus.toolStarted(event.toolCallId, labelToolCall(event.toolName, toolInput(event.args), ctx.cwd));
+	});
+
+	pi.on("tool_execution_end", (event) => {
+		workStatus.toolEnded(event.toolCallId);
 	});
 
 	pi.on("turn_end", () => {
@@ -67,6 +81,7 @@ export default function zen(pi: ExtensionAPI): void {
 
 	pi.on("agent_end", () => {
 		turnStatus.end();
+		workStatus.end();
 	});
 
 	pi.registerMarkdownTransformer((markdown, context) => {
