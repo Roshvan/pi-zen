@@ -15,6 +15,7 @@ import {
 	type RunLine,
 	type RunSeat,
 } from "./call-group.ts";
+import { codemodeRenderers } from "./codemode-view.ts";
 import { type EditDiff, editDiff, editSummary, renderDiff } from "./edit-diff.ts";
 import {
 	type Clock,
@@ -33,6 +34,7 @@ import { type PreviewBody, rowPreview } from "./row-preview.ts";
 import {
 	builtInTool,
 	type BuiltInTool,
+	CODEMODE,
 	headingOf,
 	readSpan,
 	type ReadSpan,
@@ -385,6 +387,7 @@ export function registerToolViews(
 ): void {
 	pi.registerToolRenderer((toolName, next) => {
 		if (!showsZen()) return next();
+		if (toolName === CODEMODE) return codemodeRenderers(next(), showsZen, now);
 		const tool = builtInTool(toolName);
 		return tool === undefined ? next() : TOOL_VIEWS[tool](next(), runs, showsZen, now);
 	});
