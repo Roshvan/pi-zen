@@ -11,11 +11,11 @@ import {
 	snapshotTheme,
 	withoutContentBackgrounds,
 } from "../src/backgroundless-theme.ts";
-import { CallGrouper } from "../src/call-group.ts";
-import { type BuiltinToolOptions, registerCompactTools } from "../src/compact-tools.ts";
+import { createCallRuns } from "../src/call-group.ts";
 import { squeezeBlankLines } from "../src/markdown-compaction.ts";
 import { installBlankHeader } from "../src/silent-header.ts";
 import { thinkingTail, thinkingTailLineBudget } from "../src/thinking-tail.ts";
+import { registerToolViews } from "../src/tool-views.ts";
 import { TurnStatus } from "../src/turn-status.ts";
 import { installQuietIndicator, restoreDefaultIndicator } from "../src/working-indicator.ts";
 import { ZenEditor } from "../src/zen-editor.ts";
@@ -29,20 +29,11 @@ type ZenState =
 			/** The active theme before Zen removed its content backgrounds. */
 			readonly previousTheme: Theme;
 			/** What `quietStartup` was set to before Zen claimed it. */
-			readonly previousQuietStartup: boolean;
+			readonly previousQuietStartup: ReturnType<SettingsManager["getQuietStartup"]>;
 	  };
 
 function settingsFor(ctx: ExtensionContext): SettingsManager {
 	return SettingsManager.create(ctx.cwd, undefined, { projectTrusted: ctx.isProjectTrusted() });
-}
-
-function toolOptions(ctx: ExtensionContext): BuiltinToolOptions {
-	const settings = settingsFor(ctx);
-	return {
-		autoResizeImages: settings.getImageAutoResize(),
-		shellCommandPrefix: settings.getShellCommandPrefix(),
-		shellPath: settings.getShellPath(),
-	};
 }
 
 /**
@@ -59,12 +50,13 @@ function toolOptions(ctx: ExtensionContext): BuiltinToolOptions {
  */
 export default function zen(pi: ExtensionAPI): void {
 	let state: ZenState = { kind: "off" };
-	let toolsRegistered = false;
 	let deferredReloadInstall: ReturnType<typeof setTimeout> | undefined;
 	let deferredThemeProjection: ReturnType<typeof setTimeout> | undefined;
 	let activeContext: ExtensionContext | undefined;
-	const grouper = new CallGrouper();
+	const runs = createCallRuns();
 	const turnStatus = new TurnStatus();
+
+	registerToolViews(pi, runs, () => state.kind === "on", Date.now);
 
 	// Installing is idempotent on purpose: another extension can take the header
 	// or the editor at any time, so `/zen on` has to be able to claim them back.
@@ -131,13 +123,6 @@ export default function zen(pi: ExtensionAPI): void {
 	pi.on("session_start", (event, ctx) => {
 		if (ctx.mode !== "tui") return;
 		activeContext = ctx;
-
-		// Tool overrides are registered once per process: re-registering the same
-		// names on a later session_start would stack duplicate definitions.
-		if (!toolsRegistered) {
-			registerCompactTools(pi, ctx.cwd, toolOptions(ctx), grouper, () => state.kind === "on");
-			toolsRegistered = true;
-		}
 		install(ctx);
 
 		// During /reload, Pi reapplies the saved theme after session_start. Reclaim
@@ -153,6 +138,7 @@ export default function zen(pi: ExtensionAPI): void {
 	const zenActive = (ctx: ExtensionContext) => state.kind === "on" && ctx.mode === "tui";
 
 	pi.on("agent_start", (_event, ctx) => {
+		runs.close();
 		if (zenActive(ctx)) turnStatus.begin(ctx);
 	});
 
@@ -174,7 +160,7 @@ export default function zen(pi: ExtensionAPI): void {
 
 	pi.on("turn_end", () => {
 		// The next turn's reads belong to their own line, not to this turn's.
-		grouper.close();
+		runs.close();
 	});
 
 	pi.on("session_shutdown", (_event, ctx) => {
@@ -219,7 +205,7 @@ export default function zen(pi: ExtensionAPI): void {
 				deferredThemeProjection = undefined;
 			}
 			restore(ctx, "chrome and settings");
-			ctx.ui.notify("Zen off · tool frames return after Zen is disabled and Pi reloads", "info");
+			ctx.ui.notify("Zen off", "info");
 		},
 	});
 }

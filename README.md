@@ -32,7 +32,7 @@ Thinking is the time the model spends reasoning, including the silence before it
 
 ## Quick start
 
-Requires Pi 0.84.3 or newer.
+Requires Pi 1.0.4 or newer. Zen draws tool calls through Pi's tool renderer API, so it never re-registers or wraps a tool: what runs, and how, is Pi's alone.
 
 Install the extension from npm:
 
@@ -53,7 +53,7 @@ pnpm install
 pnpm dev
 ```
 
-Before submitting a change, run `pnpm check` and `pnpm pack:check`.
+Before submitting a change, run `pnpm check` (typecheck and lint) and `pnpm pack:check`.
 
 ## Issues and contributions
 

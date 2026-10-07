@@ -1,124 +1,123 @@
 import type { ThemeColor } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
-/** The slice of Pi's theme a tool row needs to paint itself. */
+import { shortenPath } from "./display-path.ts";
+
 export type RowPalette = {
 	readonly fg: (color: ThemeColor, text: string) => string;
 };
 
-/** Where a tool call has got to. */
-export type RowOutcome =
-	| { readonly kind: "running" }
-	| { readonly kind: "settled" }
-	| { readonly kind: "failed"; readonly reason: string | undefined };
-
-/** The thing a tool acted on. */
-export type RowSubject = {
-	/** Path, command, or pattern. */
-	readonly text: string;
-	/** Which end survives truncation: paths keep their end, commands their start. */
-	readonly keep: "start" | "end";
-};
-
-/** Short outcome detail such as `+8 −3` or `2.1s`. */
 export type RowDetail = {
-	/** The detail text. */
 	readonly text: string;
-	/** `attention` for detail the user may need to act on, such as truncation. */
 	readonly emphasis: "quiet" | "attention";
 };
 
-/** One collapsed tool row. */
+export type RowOutcome =
+	| { readonly kind: "running" }
+	| { readonly kind: "settled"; readonly detail: RowDetail | undefined }
+	| { readonly kind: "failed"; readonly reason: string | undefined };
+
+export type RowSubject = {
+	readonly text: string;
+	readonly elide: "end" | "path";
+};
+
 export type ToolRow = {
-	/** Present-tense action, lower case, at most five columns. */
 	readonly verb: string;
-	/** What the tool acted on. */
-	readonly subject: RowSubject;
-	/** Outcome detail, when it adds something. */
-	readonly detail: RowDetail | undefined;
-	/** Where the call has got to. */
+	readonly subject: RowSubject | undefined;
 	readonly outcome: RowOutcome;
 };
 
-/** Marker for a pending or settled row. */
+type ShownDetail = {
+	readonly text: string;
+	readonly color: ThemeColor;
+};
+
 export const ROW_MARKER = "-";
 
-/** Marker for a row whose tool failed. */
-export const FAILED_MARKER = "✗";
+export const RUNNING: RowOutcome = { kind: "running" };
 
+const FAILED_MARKER = "✗";
 const VERB_WIDTH = 5;
-/** Between the verb column and the subject. */
 const GAP = " ";
-/** Before an outcome detail, which needs more separation than the subject. */
 const DETAIL_GAP = "  ";
 const ELLIPSIS = "…";
 const MIN_SUBJECT_WIDTH = 12;
 const MIN_DETAIL_WIDTH = 10;
 
-function elide(subject: RowSubject, max: number): string {
+export function quiet(text: string): RowDetail {
+	return { text, emphasis: "quiet" };
+}
+
+export function attention(text: string): RowDetail {
+	return { text, emphasis: "attention" };
+}
+
+export function settled(detail: RowDetail | undefined): RowOutcome {
+	return { kind: "settled", detail };
+}
+
+export function plural(count: number, one: string, many: string): string {
+	return `${count} ${count === 1 ? one : many}`;
+}
+
+export function formatDuration(elapsedMs: number): string {
+	const ms = Math.max(0, Math.round(elapsedMs));
+	if (ms < 1_000) return `${ms}ms`;
+	const tenths = Math.round(ms / 100);
+	if (tenths < 600) return `${(tenths / 10).toFixed(1)}s`;
+	const seconds = Math.round(ms / 1_000);
+	return `${Math.floor(seconds / 60)}m${String(seconds % 60).padStart(2, "0")}s`;
+}
+
+function oneLine(text: string): string {
+	return text.replace(/\s*[\r\n]+\s*/g, " ").replaceAll("\t", " ");
+}
+
+function elide(text: string, elision: RowSubject["elide"], max: number): string {
 	if (max <= 0) return "";
-	if (visibleWidth(subject.text) <= max) return subject.text;
-	if (subject.keep === "start") return truncateToWidth(subject.text, max, ELLIPSIS);
-
-	const kept = max - visibleWidth(ELLIPSIS);
-	if (kept <= 0) return ELLIPSIS.slice(0, max);
-	return ELLIPSIS + subject.text.slice(subject.text.length - kept);
+	if (visibleWidth(text) <= max) return text;
+	return elision === "end" ? truncateToWidth(text, max, ELLIPSIS) : shortenPath(text, max);
 }
 
-function markerColor(outcome: RowOutcome): ThemeColor {
-	return outcome.kind === "failed" ? "error" : "dim";
-}
-
-function detailFor(row: ToolRow): { readonly text: string; readonly color: ThemeColor } | undefined {
-	if (row.outcome.kind === "failed") {
-		const reason = row.outcome.reason;
-		return reason === undefined ? undefined : { text: reason, color: "error" };
+function detailOf(outcome: RowOutcome): ShownDetail | undefined {
+	switch (outcome.kind) {
+		case "running":
+			return undefined;
+		case "failed":
+			return outcome.reason === undefined ? undefined : { text: oneLine(outcome.reason), color: "error" };
+		case "settled":
+			if (outcome.detail === undefined) return undefined;
+			return {
+				text: oneLine(outcome.detail.text),
+				color: outcome.detail.emphasis === "attention" ? "warning" : "dim",
+			};
 	}
-	if (row.detail === undefined) return undefined;
-	return { text: row.detail.text, color: row.detail.emphasis === "attention" ? "warning" : "dim" };
 }
 
-/**
- * Format one collapsed tool row.
- *
- * The verb column is fixed so consecutive rows align. As the row narrows the
- * subject shrinks first, then the detail is truncated, and a detail left with no
- * useful room is dropped so the subject stays readable.
- *
- * @param row - The row to format.
- * @param width - Visible terminal width.
- * @param palette - Theme slice used to color the row.
- * @returns One line, never wider than `width`.
- */
+function fittedDetail(detail: ShownDetail, subject: string, room: number): ShownDetail | undefined {
+	const wanted = visibleWidth(detail.text);
+	const subjectNeed = Math.min(visibleWidth(subject), MIN_SUBJECT_WIDTH);
+	const granted = Math.min(wanted, Math.max(0, room - DETAIL_GAP.length - subjectNeed));
+	if (granted !== wanted && granted < MIN_DETAIL_WIDTH) return undefined;
+	return { text: truncateToWidth(detail.text, granted, ELLIPSIS), color: detail.color };
+}
+
 export function formatToolRow(row: ToolRow, width: number, palette: RowPalette): string {
 	if (width <= 0) return "";
 
-	const marker = row.outcome.kind === "failed" ? FAILED_MARKER : ROW_MARKER;
+	const failed = row.outcome.kind === "failed";
+	const marker = failed ? FAILED_MARKER : ROW_MARKER;
 	const verb = row.verb.padEnd(VERB_WIDTH, " ");
-	const prefixWidth = visibleWidth(marker) + 1 + visibleWidth(verb) + GAP.length;
-	const detail = detailFor(row);
+	const head = palette.fg(failed ? "error" : "dim", marker) + " " + palette.fg("text", verb) + GAP;
+	const room = width - visibleWidth(`${marker} ${verb}${GAP}`);
+	if (room <= 0) return truncateToWidth(head, width, "");
 
-	let subjectBudget = width - prefixWidth;
-	let detailText: string | undefined;
-	if (detail !== undefined) {
-		// The detail may claim what is left once the subject keeps its floor. A
-		// truncated failure reason still says what went wrong, so it is worth a
-		// shorter subject; a detail with no room at all is dropped instead.
-		const wanted = visibleWidth(detail.text);
-		const subjectNeed = Math.min(visibleWidth(row.subject.text), MIN_SUBJECT_WIDTH);
-		const available = Math.max(0, subjectBudget - DETAIL_GAP.length - subjectNeed);
-		const granted = Math.min(wanted, available);
-		if (granted === wanted || granted >= MIN_DETAIL_WIDTH) {
-			detailText = truncateToWidth(detail.text, granted, ELLIPSIS);
-			subjectBudget -= visibleWidth(detailText) + DETAIL_GAP.length;
-		}
-	}
-
-	const subject = elide(row.subject, subjectBudget);
-	let line = palette.fg(markerColor(row.outcome), marker) + " " + palette.fg("text", verb) + GAP;
-	line += palette.fg(row.outcome.kind === "running" ? "dim" : "muted", subject);
-	if (detailText !== undefined && detail !== undefined) {
-		line += DETAIL_GAP + palette.fg(detail.color, detailText);
-	}
-	return line;
+	const subjectText = row.subject === undefined ? ELLIPSIS : oneLine(row.subject.text);
+	const wanted = detailOf(row.outcome);
+	const detail = wanted === undefined ? undefined : fittedDetail(wanted, subjectText, room);
+	const subjectRoom = detail === undefined ? room : room - DETAIL_GAP.length - visibleWidth(detail.text);
+	const subject = elide(subjectText, row.subject?.elide ?? "end", subjectRoom);
+	const tail = detail === undefined ? "" : DETAIL_GAP + palette.fg(detail.color, detail.text);
+	return head + palette.fg(row.outcome.kind === "running" ? "dim" : "muted", subject) + tail;
 }
