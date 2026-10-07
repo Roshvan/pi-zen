@@ -2,124 +2,151 @@ import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
 import type { RowPalette } from "./tool-row.ts";
 
-/** One line of a compact diff. */
-export type DiffLine =
-	| {
-			readonly kind: "added" | "removed" | "context";
-			/** The line's text, as it appears in the file. */
-			readonly text: string;
-			/** Line number in the file after the edit. */
-			readonly number: number;
-	  }
-	| {
-			readonly kind: "omission";
-			/** How many source lines the diff is not showing here. */
-			readonly hidden: number;
-			/** Whether the omission removes only context or enforces the collapsed-view budget. */
-			readonly reason: "context" | "budget";
-	  };
-
-/** Lines of unchanged context kept on each side of a change. */
-const CONTEXT = 1;
-
-/** Most lines a collapsed diff will show before it defers to the expanded view. */
-export const MAX_DIFF_LINES = 8;
-
-const HUNK = /^@@\s+-\d+(?:,\d+)?\s+\+(\d+)/;
-const ELLIPSIS = "…";
-const INDENT = "  ";
+type ChangeKind = "added" | "removed" | "context";
 
 type Entry = {
-	readonly kind: "added" | "removed" | "context";
+	readonly kind: ChangeKind;
 	readonly text: string;
 	readonly number: number;
 };
 
-function parsePatch(patch: string): Entry[] {
+type DiffLine =
+	| Entry
+	| {
+			readonly kind: "omission";
+			readonly hidden: number;
+			readonly reason: "context" | "budget";
+	  };
+
+export type EditDiff = {
+	readonly lines: readonly DiffLine[];
+	readonly added: number;
+	readonly removed: number;
+	readonly hunks: number;
+	readonly clipped: boolean;
+};
+
+type Cursor = {
+	readonly old: number;
+	readonly new: number;
+};
+
+type ParsedPatch = {
+	readonly entries: readonly Entry[];
+	readonly hunks: number;
+};
+
+const CONTEXT = 1;
+const MAX_DIFF_LINES = 8;
+const HUNK = /^@@\s+-(\d+)(?:,\d+)?\s+\+(\d+)/;
+const ELLIPSIS = "…";
+const INDENT = "  ";
+
+function changeKind(marker: string | undefined): ChangeKind | undefined {
+	switch (marker) {
+		case "+":
+			return "added";
+		case "-":
+			return "removed";
+		case " ":
+			return "context";
+		default:
+			return undefined;
+	}
+}
+
+function parsePatch(patch: string): ParsedPatch {
 	const entries: Entry[] = [];
-	let line = 0;
+	let hunks = 0;
+	let cursor: Cursor | undefined;
 
 	for (const raw of patch.split("\n")) {
 		const hunk = HUNK.exec(raw);
-		if (hunk?.[1] !== undefined) {
-			line = Number.parseInt(hunk[1], 10);
+		if (hunk !== null) {
+			hunks += 1;
+			cursor = { old: Number(hunk[1]), new: Number(hunk[2]) };
 			continue;
 		}
-		// File headers and the no-newline marker are not part of the change.
-		if (raw.startsWith("+++") || raw.startsWith("---") || raw.startsWith("\\")) continue;
-		if (line === 0) continue;
+		const kind = changeKind(raw[0]);
+		if (cursor === undefined || kind === undefined) continue;
 
-		const body = raw.slice(1);
-		if (raw.startsWith("+")) {
-			entries.push({ kind: "added", text: body, number: line });
-			line += 1;
-		} else if (raw.startsWith("-")) {
-			// A removed line is numbered where it used to sit, so the pair reads together.
-			entries.push({ kind: "removed", text: body, number: line });
-		} else if (raw.startsWith(" ")) {
-			entries.push({ kind: "context", text: body, number: line });
-			line += 1;
+		const text = raw.slice(1);
+		if (kind === "removed") {
+			entries.push({ kind, text, number: cursor.old });
+			cursor = { old: cursor.old + 1, new: cursor.new };
+		} else if (kind === "added") {
+			entries.push({ kind, text, number: cursor.new });
+			cursor = { old: cursor.old, new: cursor.new + 1 };
+		} else {
+			entries.push({ kind, text, number: cursor.new });
+			cursor = { old: cursor.old + 1, new: cursor.new + 1 };
 		}
 	}
 
-	return entries;
+	return { entries, hunks };
 }
 
-/**
- * Reduce a unified patch to the lines worth reading.
- *
- * Every changed line is kept, with one line of context on each side of a change
- * group. Context the patch carried but the eye does not need becomes a single
- * omission marker, so two changes far apart in a file stay two change groups
- * rather than one wall of unchanged code.
- *
- * @param patch - A standard unified patch.
- * @returns The lines to render, in file order.
- */
-export function compactDiff(patch: string): DiffLine[] {
-	const entries = parsePatch(patch);
-	const keep = entries.map((entry) => entry.kind !== "context");
-	entries.forEach((entry, index) => {
-		if (entry.kind === "context") return;
-		for (let offset = 1; offset <= CONTEXT; offset += 1) {
-			if (index - offset >= 0) keep[index - offset] = true;
-			if (index + offset < entries.length) keep[index + offset] = true;
-		}
+function nearChange(entries: readonly Entry[], index: number): boolean {
+	const from = Math.max(0, index - CONTEXT);
+	return entries.slice(from, index + CONTEXT + 1).some((entry) => entry.kind !== "context");
+}
+
+function hiddenBefore(shown: readonly boolean[], index: number): number {
+	return index === 0 ? 0 : index - 1 - shown.lastIndexOf(true, index - 1);
+}
+
+function withContext(entries: readonly Entry[]): readonly DiffLine[] {
+	const shown = entries.map((_entry, index) => nearChange(entries, index));
+	return entries.flatMap((entry, index): DiffLine[] => {
+		if (shown[index] !== true) return [];
+		const hidden = hiddenBefore(shown, index);
+		return hidden > 0 ? [{ kind: "omission", hidden, reason: "context" }, entry] : [entry];
 	});
+}
 
-	const lines: DiffLine[] = [];
-	let hidden = 0;
-	for (const [index, entry] of entries.entries()) {
-		if (keep[index] !== true) {
-			hidden += 1;
-			continue;
-		}
-		if (hidden > 0) {
-			lines.push({ kind: "omission", hidden, reason: "context" });
-			hidden = 0;
-		}
-		lines.push(entry);
-	}
+function withinBudget(lines: readonly DiffLine[]): readonly DiffLine[] {
+	const visible = MAX_DIFF_LINES - 1;
+	const leading = Math.ceil(visible / 2);
+	const trailing = Math.floor(visible / 2);
+	const omitted = lines.slice(leading, lines.length - trailing);
+	const hidden = omitted.reduce((total, line) => total + (line.kind === "omission" ? line.hidden : 1), 0);
+	return [
+		...lines.slice(0, leading),
+		{ kind: "omission", hidden, reason: "budget" },
+		...lines.slice(lines.length - trailing),
+	];
+}
 
-	if (lines.length <= MAX_DIFF_LINES) return lines;
+export function editDiff(patch: string): EditDiff {
+	const { entries, hunks } = parsePatch(patch);
+	const lines = withContext(entries);
+	const clipped = lines.length > MAX_DIFF_LINES;
+	return {
+		lines: clipped ? withinBudget(lines) : lines,
+		added: entries.filter((entry) => entry.kind === "added").length,
+		removed: entries.filter((entry) => entry.kind === "removed").length,
+		hunks,
+		clipped,
+	};
+}
 
-	// Keep both ends: the opening identifies the change and the tail shows where
-	// it landed. The expanded renderer remains the complete source of truth.
-	const visibleLines = MAX_DIFF_LINES - 1;
-	const leadingCount = Math.ceil(visibleLines / 2);
-	const trailingCount = Math.floor(visibleLines / 2);
-	const leading = lines.slice(0, leadingCount);
-	const trailing = lines.slice(lines.length - trailingCount);
-	const omitted = lines.slice(leadingCount, lines.length - trailingCount);
-	const budgetHidden = omitted.reduce((total, line) => total + (line.kind === "omission" ? line.hidden : 1), 0);
-	return [...leading, { kind: "omission", hidden: budgetHidden, reason: "budget" }, ...trailing];
+export function editSummary(diff: EditDiff): string | undefined {
+	if (diff.added === 0 && diff.removed === 0) return undefined;
+	const change = `+${diff.added} −${diff.removed}`;
+	return diff.clipped && diff.hunks > 1 ? `${change} · ${diff.hunks} hunks` : change;
 }
 
 function markerOf(line: DiffLine): string {
-	if (line.kind === "added") return "+";
-	if (line.kind === "removed") return "-";
-	if (line.kind === "omission") return ELLIPSIS;
-	return " ";
+	switch (line.kind) {
+		case "added":
+			return "+";
+		case "removed":
+			return "-";
+		case "omission":
+			return ELLIPSIS;
+		case "context":
+			return " ";
+	}
 }
 
 function colorOf(line: DiffLine): "toolDiffAdded" | "toolDiffRemoved" | "toolDiffContext" {
@@ -128,42 +155,17 @@ function colorOf(line: DiffLine): "toolDiffAdded" | "toolDiffRemoved" | "toolDif
 	return "toolDiffContext";
 }
 
-/**
- * Render a compact diff under a collapsed edit row.
- *
- * The gutter is as wide as the largest line number, so the code column starts in
- * the same place on every line. A line too long for the terminal is truncated
- * rather than wrapped, because a wrapped diff stops looking like one.
- *
- * @param lines - The lines from `compactDiff`.
- * @param width - Visible terminal width.
- * @param palette - Theme slice used to color the diff.
- * @returns One string per line, none wider than `width`.
- */
+function lineText(line: DiffLine, room: number): string {
+	if (line.kind !== "omission") return truncateToWidth(line.text, room, ELLIPSIS);
+	return line.reason === "context" ? `${line.hidden} unchanged` : `${line.hidden} more lines`;
+}
+
 export function renderDiff(lines: readonly DiffLine[], width: number, palette: RowPalette): string[] {
-	if (lines.length === 0) return [];
-
-	let gutter = 1;
-	for (const line of lines) {
-		if (line.kind !== "omission") gutter = Math.max(gutter, String(line.number).length);
-	}
-
-	const rendered: string[] = [];
-	for (const line of lines) {
-		// The marker and the number are aligned as one token, so the digits line up
-		// however wide the numbers get and the marker leans in from the left.
+	const gutter = Math.max(1, ...lines.map((line) => (line.kind === "omission" ? 1 : String(line.number).length)));
+	return lines.flatMap((line) => {
 		const number = line.kind === "omission" ? "" : String(line.number);
 		const prefix = INDENT + (markerOf(line) + number).padStart(gutter + 1, " ") + " ";
 		const room = width - visibleWidth(prefix);
-		if (room <= 0) continue;
-
-		const text =
-			line.kind === "omission"
-				? line.reason === "context"
-					? `${line.hidden} unchanged`
-					: `${line.hidden} more lines`
-				: truncateToWidth(line.text, room, ELLIPSIS);
-		rendered.push(palette.fg(colorOf(line), prefix + text));
-	}
-	return rendered;
+		return room <= 0 ? [] : [palette.fg(colorOf(line), prefix + lineText(line, room))];
+	});
 }

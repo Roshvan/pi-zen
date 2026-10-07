@@ -46,12 +46,12 @@
 		]
 	},
 	"peerDependencies": {
-		"@earendil-works/pi-coding-agent": ">=0.84.3",
-		"@earendil-works/pi-tui": ">=0.84.3"
+		"@earendil-works/pi-coding-agent": ">=1.0.4",
+		"@earendil-works/pi-tui": ">=1.0.4"
 	},
 	"devDependencies": {
-		"@earendil-works/pi-coding-agent": "0.85.1",
-		"@earendil-works/pi-tui": "0.85.1",
+		"@earendil-works/pi-coding-agent": "1.0.4",
+		"@earendil-works/pi-tui": "1.0.4",
 		"@oxlint/plugins": "^1.83.0",
 		"@types/node": "^26.6.1",
 		"oxlint": "^1.83.0",
