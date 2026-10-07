@@ -8,6 +8,7 @@ import type {
 	WriteToolInput,
 } from "@earendil-works/pi-coding-agent";
 
+import { scriptNote } from "./codemode-script.ts";
 import { displayPath } from "./display-path.ts";
 import type { RowSubject } from "./tool-row.ts";
 import { isFiniteNumber, isString, parseRecord, type Reported } from "./value-guards.ts";
@@ -89,6 +90,12 @@ const commandSubject: Subject = (input) => {
 	return command === undefined ? undefined : { text: commandHead(command), elide: "end" };
 };
 
+const noteSubject: Subject = (input) => {
+	const code = presentText(input.code);
+	const note = code === undefined ? undefined : scriptNote(code);
+	return note === undefined ? undefined : { text: note, elide: "end" };
+};
+
 const BUILT_INS = {
 	read: { verb: "read", subject: pathSubject },
 	edit: { verb: "edit", subject: pathSubject },
@@ -116,6 +123,7 @@ export function headingOf(tool: BuiltInTool, input: ToolInput, cwd: string): Cal
 function callHeading(name: string, input: ToolInput, cwd: string): CallHeading {
 	const tool = builtInTool(name);
 	if (tool !== undefined) return headingOf(tool, input, cwd);
+	if (name === CODEMODE) return { verb: "code", subject: noteSubject(input, cwd) };
 	return {
 		verb: name,
 		subject: pathSubject(input, cwd) ?? patternSubject(input, cwd) ?? commandSubject(input, cwd),

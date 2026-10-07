@@ -40,7 +40,7 @@ export function parseCodemodeScript(code: string): ParsedScript {
 	return { note: scriptNote(code), calls: scanCode(code, 0, "end of script").calls };
 }
 
-function scriptNote(code: string): string | undefined {
+export function scriptNote(code: string): string | undefined {
 	const first = code
 		.split("\n")
 		.map((line) => line.trim())

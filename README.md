@@ -4,7 +4,7 @@ I built `pi-zen` because I wanted a minimal interface that made it easier to sta
 
 For real knowledge work, I like being an active participant. I want to understand what is happening between the AI and me so we can be good partners in making decisions. `pi-zen` gives me that space: clear responses, visible progress, and the useful parts of the session in a calm, visually appealing interface.
 
-`pi-zen` is a presentation extension for the [Pi](https://pi.dev) terminal interface. It removes visual clutter while preserving conversations, tool activity, reasoning, and session data. It adds compact tool summaries and diffs, a minimal editor rail, a quieter startup, a quiet loading mark, and a live reading of where the current request's time is going, without changing tool execution or model prompts.
+`pi-zen` is a presentation extension for the [Pi](https://pi.dev) terminal interface. It removes visual clutter while preserving conversations, tool activity, reasoning, and session data. It adds compact tool summaries and diffs, a minimal editor rail, a quieter startup, a quiet loading mark that names the work in progress, and a live reading of where the current request's time is going, without changing tool execution or model prompts.
 
 ## Showcase
 
@@ -22,7 +22,7 @@ For real knowledge work, I like being an active participant. I want to understan
 
 ## While a request runs
 
-While a request is in progress, a light travels a short bar above the editor and comes back.
+While a request is in progress, a light travels a short bar above the editor and comes back. Beside it, a line names the current work. It reads `thinking` or `writing` when the model is the thing in motion, and names the tool when one is running, such as `read src/turn-status.ts`, `grep frameSent`, or `code fetch the logs`. Several tools at once are listed newest first.
 
 A dim line above the editor says where the time is going and updates as the request runs:
 
