@@ -1,75 +1,6 @@
-import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
+import type { Theme, ThemeBg, ThemeColor } from "@earendil-works/pi-coding-agent";
 
-/** Name used only while Zen's backgroundless projection is active. */
-export const BACKGROUNDLESS_THEME_NAME = "pi-zen:backgroundless";
-
-const THEME_COLORS = [
-	"accent",
-	"border",
-	"borderAccent",
-	"borderMuted",
-	"success",
-	"error",
-	"warning",
-	"muted",
-	"dim",
-	"text",
-	"thinkingText",
-	"searchMatchText",
-	"userMessageText",
-	"customMessageText",
-	"customMessageLabel",
-	"toolTitle",
-	"toolOutput",
-	"mdHeading",
-	"mdLink",
-	"mdLinkUrl",
-	"mdCode",
-	"mdCodeBlock",
-	"mdCodeBlockBorder",
-	"mdQuote",
-	"mdQuoteBorder",
-	"mdHr",
-	"mdListBullet",
-	"toolDiffAdded",
-	"toolDiffRemoved",
-	"toolDiffContext",
-	"syntaxComment",
-	"syntaxKeyword",
-	"syntaxFunction",
-	"syntaxVariable",
-	"syntaxString",
-	"syntaxNumber",
-	"syntaxType",
-	"syntaxOperator",
-	"syntaxPunctuation",
-	"thinkingOff",
-	"thinkingMinimal",
-	"thinkingLow",
-	"thinkingMedium",
-	"thinkingHigh",
-	"thinkingXhigh",
-	"thinkingMax",
-	"bashMode",
-] as const satisfies ReadonlyArray<ThemeColor>;
-
-type ThemeBackground = Parameters<Theme["bg"]>[0] | "scrollbarThumb";
-
-type LegacyScrollbarTheme = {
-	readonly getBgAnsi: (color: ThemeBackground) => string;
-};
-
-const THEME_BACKGROUNDS = [
-	"selectedBg",
-	"searchMatchBg",
-	"userMessageBg",
-	"customMessageBg",
-	"toolPendingBg",
-	"toolSuccessBg",
-	"toolErrorBg",
-] as const satisfies ReadonlyArray<ThemeBackground>;
-
-const CONTENT_BACKGROUNDS: ReadonlySet<ThemeBackground> = new Set([
+const CONTENT_BACKGROUNDS: ReadonlySet<ThemeBg> = new Set([
 	"userMessageBg",
 	"customMessageBg",
 	"toolPendingBg",
@@ -77,107 +8,75 @@ const CONTENT_BACKGROUNDS: ReadonlySet<ThemeBackground> = new Set([
 	"toolErrorBg",
 ]);
 
-/** Foregrounds designed for a colored surface need a terminal-safe counterpart once that surface is gone. */
+const OPEN_CANVAS = "\x1b[49m";
+
+const INSTALLED_THEME = Symbol.for("@earendil-works/pi-coding-agent:theme");
+
+type ThemeCanvas = {
+	readonly bg: Theme["bg"];
+	readonly fg: Theme["fg"];
+	readonly getBgAnsi: Theme["getBgAnsi"];
+	readonly getFgAnsi: Theme["getFgAnsi"];
+};
+
+declare global {
+	var piZenQuietThemes: WeakMap<Theme, ThemeCanvas> | undefined;
+}
+
+function quietThemes(): WeakMap<Theme, ThemeCanvas> {
+	const carried = globalThis.piZenQuietThemes ?? new WeakMap<Theme, ThemeCanvas>();
+	globalThis.piZenQuietThemes = carried;
+	return carried;
+}
+
+function isThemeInstance(value: Theme | null | undefined): value is Theme {
+	if (typeof value !== "object" || value === null) return false;
+	const prototype: object | null = Object.getPrototypeOf(value);
+	return prototype !== null && "getFgAnsi" in prototype && "bg" in prototype;
+}
+
+function parseInstalledTheme(slot: PropertyDescriptor | undefined): Theme | undefined {
+	const installed: Theme | null | undefined = slot?.value;
+	return isThemeInstance(installed) ? installed : undefined;
+}
+
+function installedTheme(): Theme | undefined {
+	return parseInstalledTheme(Object.getOwnPropertyDescriptor(globalThis, INSTALLED_THEME));
+}
+
 function backgroundlessForeground(color: ThemeColor): ThemeColor {
 	if (color === "userMessageText" || color === "customMessageText" || color === "toolOutput") return "text";
 	return color;
 }
 
-type ForegroundInput = ConstructorParameters<typeof Theme>[0];
-type BackgroundInput = ConstructorParameters<typeof Theme>[1];
+export function quietLiveTheme(): Theme | undefined {
+	const theme = installedTheme();
+	if (theme === undefined) return undefined;
+	const quiet = quietThemes();
+	if (quiet.has(theme)) return theme;
 
-type ThemeSnapshotOptions = {
-	readonly name: string | undefined;
-	readonly suppressContentBackgrounds: boolean;
-};
-
-function emptyForegrounds(): ForegroundInput {
-	// SAFETY: THEME_COLORS is checked against ThemeColor and contains every required key exactly once.
-	return Object.fromEntries(THEME_COLORS.map((color) => [color, ""])) as ForegroundInput;
-}
-
-function emptyBackgrounds(): BackgroundInput {
-	// SAFETY: THEME_BACKGROUNDS is checked against ThemeBackground and contains every required key exactly once.
-	return Object.fromEntries(THEME_BACKGROUNDS.map((color) => [color, ""])) as BackgroundInput;
-}
-
-function captureScrollbarColors(
-	source: Theme,
-	foregroundAnsi: Map<ThemeColor, string>,
-	backgroundAnsi: Map<ThemeBackground, string>,
-): void {
-	let thumb: string;
-	try {
-		thumb = source.getFgAnsi("scrollbarThumb");
-	} catch (error) {
-		if (!(error instanceof Error) || error.message !== "Unknown theme color: scrollbarThumb") throw error;
-		// SAFETY: Pi 0.84.x reports this missing foreground because its thumb is a background token.
-		// The current Theme type omits that legacy key; its getter still checks the key at runtime.
-		const legacySource = source as LegacyScrollbarTheme;
-		backgroundAnsi.set("scrollbarThumb", legacySource.getBgAnsi("scrollbarThumb"));
-		return;
-	}
-	foregroundAnsi.set("scrollbarThumb", thumb);
-	foregroundAnsi.set("scrollbarTrack", source.getFgAnsi("scrollbarTrack"));
-}
-
-function makeThemeSnapshot(source: Theme, options: ThemeSnapshotOptions): Theme {
-	const foregroundAnsi = new Map<ThemeColor, string>();
-	const backgroundAnsi = new Map<ThemeBackground, string>();
-	for (const color of THEME_COLORS) foregroundAnsi.set(color, source.getFgAnsi(color));
-	for (const color of THEME_BACKGROUNDS) backgroundAnsi.set(color, source.getBgAnsi(color));
-	captureScrollbarColors(source, foregroundAnsi, backgroundAnsi);
-
-	// SAFETY: Pi created source, so its constructor is the runtime's Theme constructor. Using that exact constructor
-	// keeps instanceof checks valid when this source package has a different development copy of Pi installed.
-	const RuntimeTheme = source.constructor as typeof Theme;
-	const snapshot = new RuntimeTheme(
-		emptyForegrounds(),
-		emptyBackgrounds(),
-		source.getColorMode(),
-		options.name === undefined ? {} : { name: options.name },
-	);
-
-	snapshot.getFgAnsi = (color: ThemeColor): string => {
-		const projectedColor = options.suppressContentBackgrounds ? backgroundlessForeground(color) : color;
-		const ansi = foregroundAnsi.get(projectedColor);
-		if (ansi === undefined) throw new Error(`Unknown theme color: ${color}`);
-		return ansi;
+	const canvas: ThemeCanvas = {
+		bg: theme.bg,
+		fg: theme.fg,
+		getBgAnsi: theme.getBgAnsi,
+		getFgAnsi: theme.getFgAnsi,
 	};
-	const getBgAnsi = (color: ThemeBackground): string => {
-		if (options.suppressContentBackgrounds && CONTENT_BACKGROUNDS.has(color)) return "\x1b[49m";
-		const ansi = backgroundAnsi.get(color);
-		if (ansi === undefined) throw new Error(`Unknown theme background: ${color}`);
-		return ansi;
-	};
-	snapshot.getBgAnsi = getBgAnsi;
-	snapshot.fg = (color: ThemeColor, text: string): string => `${snapshot.getFgAnsi(color)}${text}\x1b[39m`;
-	snapshot.bg = (color: ThemeBackground, text: string): string => {
-		if (options.suppressContentBackgrounds && CONTENT_BACKGROUNDS.has(color)) return text;
-		return `${getBgAnsi(color)}${text}\x1b[49m`;
-	};
-
-	return snapshot;
+	theme.getBgAnsi = (color: ThemeBg): string =>
+		CONTENT_BACKGROUNDS.has(color) ? OPEN_CANVAS : canvas.getBgAnsi.call(theme, color);
+	theme.bg = (color: ThemeBg, text: string): string =>
+		CONTENT_BACKGROUNDS.has(color) ? text : canvas.bg.call(theme, color, text);
+	theme.getFgAnsi = (color: ThemeColor): string => canvas.getFgAnsi.call(theme, backgroundlessForeground(color));
+	theme.fg = (color: ThemeColor, text: string): string => canvas.fg.call(theme, backgroundlessForeground(color), text);
+	quiet.set(theme, canvas);
+	return theme;
 }
 
-/**
- * Capture the active theme so Zen can restore it without depending on mutable global theme state.
- *
- * @param source - Pi's currently active theme.
- * @returns An in-memory copy of the active theme.
- */
-export function snapshotTheme(source: Theme): Theme {
-	return makeThemeSnapshot(source, { name: source.name, suppressContentBackgrounds: false });
-}
-
-/**
- * Keep the active theme while removing message and tool backgrounds.
- * Surface-specific body text falls back to the theme's terminal-safe base text;
- * selection and search backgrounds, plus scrollbar colors, remain as affordances.
- *
- * @param source - Pi's currently active theme.
- * @returns A backgroundless projection of the active theme.
- */
-export function withoutContentBackgrounds(source: Theme): Theme {
-	return makeThemeSnapshot(source, { name: BACKGROUNDLESS_THEME_NAME, suppressContentBackgrounds: true });
+export function restoreLiveTheme(): void {
+	const theme = installedTheme();
+	if (theme === undefined) return;
+	const quiet = quietThemes();
+	const canvas = quiet.get(theme);
+	if (canvas === undefined) return;
+	quiet.delete(theme);
+	Object.assign(theme, canvas);
 }
