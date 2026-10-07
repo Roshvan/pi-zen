@@ -1,101 +1,97 @@
-import type {
-	ExtensionContext,
-	MessageEndEvent,
-	MessageStartEvent,
-	MessageUpdateEvent,
-} from "@earendil-works/pi-coding-agent";
+import type { ExtensionUIContext, Theme } from "@earendil-works/pi-coding-agent";
+import type { Component, TUI } from "@earendil-works/pi-tui";
 
-import { advance, beginRun, formatTurnStatus, type TurnPhase, type TurnTiming, type TurnTokens } from "./turn-timing.ts";
-import { QUIET_INTERVAL_MS } from "./working-indicator.ts";
+import {
+	advance,
+	beginRun,
+	formatTurnStatus,
+	type TurnPhase,
+	type TurnSignal,
+	type TurnTiming,
+	type TurnTokens,
+} from "./turn-timing.ts";
+import type { UiPart } from "./ui-claim.ts";
+
+type TurnStatus = UiPart & {
+	readonly begin: () => void;
+	readonly open: () => void;
+	readonly produce: (phase: TurnPhase, usage: TurnTokens) => void;
+	readonly commit: (usage: TurnTokens) => void;
+	readonly end: () => void;
+};
 
 const WIDGET_KEY = "zen-turn-status";
-const WIDGET_INDENT = 1;
-const FALLBACK_COLUMNS = 80;
+const PADDING = " ";
+const TICK_MS = 240;
 
-type StreamedMessage = Extract<MessageUpdateEvent["message"], { role: "assistant" }>;
-
-function tokensOf(message: StreamedMessage): TurnTokens {
-	return { input: message.usage.input, output: message.usage.output };
+function tokensOf(usage: TurnTokens): TurnTokens {
+	return { input: usage.input, output: usage.output };
 }
 
-function phaseOf(message: StreamedMessage): TurnPhase | undefined {
-	const latest = message.content.at(-1);
-	if (latest === undefined) return undefined;
-	return latest.type === "thinking" ? "thinking" : "writing";
+function statusLines(line: string, theme: Theme): string[] {
+	return line === "" ? [] : [PADDING + theme.fg("muted", line)];
 }
 
-export class TurnStatus {
-	private timing: TurnTiming = beginRun();
-	private ticker: ReturnType<typeof setInterval> | undefined;
-	private context: ExtensionContext | undefined;
+export function createTurnStatus(now: () => number): TurnStatus {
+	let shownOn: ExtensionUIContext | undefined;
+	let timing: TurnTiming = beginRun();
+	let ticker: ReturnType<typeof setInterval> | undefined;
+	let screen: TUI | undefined;
 
-	begin(ctx: ExtensionContext): void {
-		this.context = ctx;
-		this.timing = beginRun();
-		this.startTicking();
-		this.render();
-	}
+	const refresh = (): void => screen?.requestRender();
 
-	open(event: MessageStartEvent, ctx: ExtensionContext): void {
-		if (event.message.role !== "assistant") return;
+	const stopTicking = (): void => {
+		if (ticker === undefined) return;
+		clearInterval(ticker);
+		ticker = undefined;
+	};
 
-		this.context = ctx;
-		this.timing = advance(this.timing, { kind: "opened" }, Date.now());
-		this.render();
-	}
+	const startTicking = (): void => {
+		stopTicking();
+		ticker = setInterval(refresh, TICK_MS);
+		ticker.unref();
+	};
 
-	update(event: MessageUpdateEvent, ctx: ExtensionContext): void {
-		if (event.message.role !== "assistant") return;
+	const apply = (signal: TurnSignal): void => {
+		if (shownOn === undefined) return;
+		timing = advance(timing, signal, now());
+		refresh();
+	};
 
-		this.context = ctx;
-		const phase = phaseOf(event.message);
-		if (phase !== undefined) {
-			const live = tokensOf(event.message);
-			this.timing = advance(this.timing, { kind: "producing", phase, live }, Date.now());
-		}
-		this.render();
-	}
+	const widget = (tui: TUI, theme: Theme): Component & { dispose(): void } => {
+		screen = tui;
+		return {
+			render: (width) => statusLines(formatTurnStatus(timing, now(), width - PADDING.length * 2), theme),
+			invalidate: () => {},
+			dispose: () => {
+				if (screen === tui) screen = undefined;
+			},
+		};
+	};
 
-	commit(event: MessageEndEvent, ctx: ExtensionContext): void {
-		if (event.message.role !== "assistant") return;
-
-		this.context = ctx;
-		this.timing = advance(this.timing, { kind: "settled", tokens: tokensOf(event.message) }, Date.now());
-		this.render();
-	}
-
-	end(ctx: ExtensionContext): void {
-		this.context = ctx;
-		this.timing = advance(this.timing, { kind: "closed" }, Date.now());
-		this.stopTicking();
-		this.render();
-	}
-
-	clear(ctx: ExtensionContext): void {
-		this.context = ctx;
-		this.timing = beginRun();
-		this.stopTicking();
-		ctx.ui.setWidget(WIDGET_KEY, undefined);
-	}
-
-	private startTicking(): void {
-		this.stopTicking();
-		this.ticker = setInterval(() => this.render(), QUIET_INTERVAL_MS);
-		this.ticker.unref();
-	}
-
-	private stopTicking(): void {
-		if (this.ticker === undefined) return;
-		clearInterval(this.ticker);
-		this.ticker = undefined;
-	}
-
-	private render(): void {
-		const ctx = this.context;
-		if (ctx === undefined) return;
-
-		const columns = process.stdout.columns ?? FALLBACK_COLUMNS;
-		const line = formatTurnStatus(this.timing, Date.now(), columns - WIDGET_INDENT);
-		ctx.ui.setWidget(WIDGET_KEY, line === "" ? undefined : [ctx.ui.theme.fg("muted", line)]);
-	}
+	return {
+		show: (ui) => {
+			shownOn = ui;
+			ui.setWidget(WIDGET_KEY, widget);
+		},
+		hide: (ui) => {
+			shownOn = undefined;
+			stopTicking();
+			timing = beginRun();
+			ui.setWidget(WIDGET_KEY, undefined);
+		},
+		begin: () => {
+			if (shownOn === undefined) return;
+			timing = beginRun();
+			startTicking();
+			refresh();
+		},
+		open: () => apply({ kind: "opened" }),
+		produce: (phase, usage) => apply({ kind: "producing", phase, live: tokensOf(usage) }),
+		commit: (usage) => apply({ kind: "committed", tokens: tokensOf(usage) }),
+		end: () => {
+			apply({ kind: "closed" });
+			stopTicking();
+		},
+	};
 }

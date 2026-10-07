@@ -4,7 +4,7 @@ I built `pi-zen` because I wanted a minimal interface that made it easier to sta
 
 For real knowledge work, I like being an active participant. I want to understand what is happening between the AI and me so we can be good partners in making decisions. `pi-zen` gives me that space: clear responses, visible progress, and the useful parts of the session in a calm, visually appealing interface.
 
-`pi-zen` is a presentation extension for the [Pi](https://pi.dev) terminal interface. It removes visual clutter while preserving conversations, tool activity, reasoning, and session data. It adds compact tool summaries and diffs, a minimal editor rail, a quieter startup, a calmer working indicator, and a live reading of where the current request's time is going, without changing tool execution or model prompts.
+`pi-zen` is a presentation extension for the [Pi](https://pi.dev) terminal interface. It removes visual clutter while preserving conversations, tool activity, reasoning, and session data. It adds compact tool summaries and diffs, a minimal editor rail, a quieter startup, a quiet loading mark, and a live reading of where the current request's time is going, without changing tool execution or model prompts.
 
 ## Showcase
 
@@ -22,7 +22,9 @@ For real knowledge work, I like being an active participant. I want to understan
 
 ## While a request runs
 
-Above the editor, one dim line says where the time is going and updates as the request runs:
+While a request is in progress, a light travels a short bar above the editor and comes back.
+
+A dim line above the editor says where the time is going and updates as the request runs:
 
 ```text
 7.2s thinking · 3.6s writing · ↑6.5k ↓5.8k
@@ -40,7 +42,9 @@ Install the extension from npm:
 pi install npm:pi-zen
 ```
 
-You can also install the latest version directly from GitHub with `pi install git:github.com/Roshvan/pi-zen`. Start Pi as usual, then run `/zen` to toggle Zen mode.
+You can also install the latest version directly from GitHub with `pi install git:github.com/Roshvan/pi-zen`. Start Pi as usual; Zen is on. Run `/zen` to toggle it, or `/zen on` and `/zen off` to choose; the choice holds across `/new`, `/resume`, and `/reload` until Pi exits. Tool rows drawn while Zen is off keep Pi's own frame, and `/reload` redraws earlier rows in the current look.
+
+Zen also quiets Pi's startup screen. If `quietStartup` is off in your global Pi settings, Zen turns it on, says so once, and records in `pi-zen.json`, next to those settings, that the change was its own; `/zen off` turns it back off, even after a restart. Zen never touches a project's `quietStartup`, and if you turn the global one off again yourself, it stays off. Zen follows the active theme, including one picked with `/settings`, and gives its colors back when it is switched off.
 
 ## Development
 

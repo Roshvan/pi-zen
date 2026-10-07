@@ -2,6 +2,12 @@ import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
 export type TurnPhase = "thinking" | "writing";
 
+export function phaseFromContent(blocks: readonly { readonly type: string }[]): TurnPhase | undefined {
+	const latest = blocks.at(-1);
+	if (latest === undefined) return undefined;
+	return latest.type === "thinking" ? "thinking" : "writing";
+}
+
 export type TurnTokens = {
 	readonly input: number;
 	readonly output: number;
@@ -30,8 +36,8 @@ export type TurnTiming =
 export type TurnSignal =
 	| { readonly kind: "opened" }
 	| { readonly kind: "producing"; readonly phase: TurnPhase; readonly live: TurnTokens }
-	| { readonly kind: "closed" }
-	| { readonly kind: "settled"; readonly tokens: TurnTokens };
+	| { readonly kind: "committed"; readonly tokens: TurnTokens }
+	| { readonly kind: "closed" };
 
 type TurnElapsed = {
 	readonly thinkingMs: number;
@@ -59,7 +65,7 @@ function addTokens(left: TurnTokens, right: TurnTokens): TurnTokens {
 	return { input: left.input + right.input, output: left.output + right.output };
 }
 
-function settle(timing: TurnTiming, now: number, waitPhase: TurnPhase): Accrued {
+function accrue(timing: TurnTiming, now: number, waitPhase: TurnPhase): Accrued {
 	const totals = { thinkingMs: timing.thinkingMs, writingMs: timing.writingMs, committed: timing.committed };
 	if (timing.kind === "idle") return totals;
 
@@ -71,12 +77,12 @@ function settle(timing: TurnTiming, now: number, waitPhase: TurnPhase): Accrued 
 		: { ...totals, writingMs: totals.writingMs + spent };
 }
 
-function settleAsThinking(timing: TurnTiming, now: number): Accrued {
-	return settle(timing, now, "thinking");
+function accrueAsThinking(timing: TurnTiming, now: number): Accrued {
+	return accrue(timing, now, "thinking");
 }
 
 function elapsed(timing: TurnTiming, now: number): TurnElapsed {
-	const totals = settleAsThinking(timing, now);
+	const totals = accrueAsThinking(timing, now);
 	return { thinkingMs: totals.thinkingMs, writingMs: totals.writingMs };
 }
 
@@ -112,7 +118,7 @@ export function beginRun(): TurnTiming {
 export function advance(timing: TurnTiming, signal: TurnSignal, now: number): TurnTiming {
 	switch (signal.kind) {
 		case "opened":
-			return { kind: "waiting", openedAt: now, live: NO_TOKENS, ...settleAsThinking(timing, now) };
+			return { kind: "waiting", openedAt: now, live: NO_TOKENS, ...accrueAsThinking(timing, now) };
 
 		case "producing": {
 			if (timing.kind === "streaming" && timing.phase === signal.phase) return { ...timing, live: signal.live };
@@ -122,17 +128,17 @@ export function advance(timing: TurnTiming, signal: TurnSignal, now: number): Tu
 				phase: signal.phase,
 				since: now,
 				live: signal.live,
-				...settle(timing, now, signal.phase),
+				...accrue(timing, now, signal.phase),
 			};
 		}
 
-		case "closed":
-			return { kind: "idle", ...settleAsThinking(timing, now) };
-
-		case "settled": {
-			const totals = settleAsThinking(timing, now);
+		case "committed": {
+			const totals = accrueAsThinking(timing, now);
 			return { kind: "idle", ...totals, committed: addTokens(totals.committed, signal.tokens) };
 		}
+
+		case "closed":
+			return { kind: "idle", ...accrueAsThinking(timing, now) };
 	}
 }
 
