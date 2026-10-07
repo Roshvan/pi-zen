@@ -12,9 +12,13 @@ import { displayPath } from "./display-path.ts";
 import type { RowSubject } from "./tool-row.ts";
 import { isFiniteNumber, isString, parseRecord, type Reported } from "./value-guards.ts";
 
+type CodemodeInput = { readonly code: string };
+
 export type ToolInput = Reported<
-	ReadToolInput & BashToolInput & EditToolInput & WriteToolInput & GrepToolInput & FindToolInput & LsToolInput
+	ReadToolInput & BashToolInput & EditToolInput & WriteToolInput & GrepToolInput & FindToolInput & LsToolInput & CodemodeInput
 >;
+
+export const CODEMODE = "codemode";
 
 export type BuiltInTool = "read" | "edit" | "write" | "bash" | "powershell" | "grep" | "find" | "ls";
 
@@ -109,6 +113,23 @@ export function headingOf(tool: BuiltInTool, input: ToolInput, cwd: string): Cal
 	return { verb: builtIn.verb, subject: builtIn.subject(input, cwd) };
 }
 
+function callHeading(name: string, input: ToolInput, cwd: string): CallHeading {
+	const tool = builtInTool(name);
+	if (tool !== undefined) return headingOf(tool, input, cwd);
+	return {
+		verb: name,
+		subject: pathSubject(input, cwd) ?? patternSubject(input, cwd) ?? commandSubject(input, cwd),
+	};
+}
+
+export function headingLabel(heading: CallHeading): string {
+	return heading.subject === undefined ? heading.verb : `${heading.verb} ${heading.subject.text}`;
+}
+
+export function labelToolCall(name: string, input: ToolInput, cwd: string): string {
+	return headingLabel(callHeading(name, input, cwd));
+}
+
 export function readSpan(input: ToolInput): ReadSpan {
 	return {
 		path: presentText(input.path),
@@ -119,4 +140,8 @@ export function readSpan(input: ToolInput): ReadSpan {
 
 export function writtenFile(input: ToolInput): WrittenFile {
 	return { path: presentText(input.path), content: isString(input.content) ? input.content : "" };
+}
+
+export function scriptSource(input: ToolInput): string {
+	return presentText(input.code) ?? "";
 }
