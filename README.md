@@ -32,6 +32,12 @@ A dim line above the editor says where the time is going and updates as the requ
 
 Thinking is the time the model spends reasoning, including the silence before it streams anything; writing is the time it spends producing text and tool calls. Time a tool spends running belongs to neither and is left out. The token counts follow Pi's footer: tokens sent, excluding cache reads and writes, and tokens produced, reasoning included. Both cover the whole request, however many turns it takes. A half of the work that took no measurable time is left out, so a model that does not stream its reasoning simply reads as writing. The final reading stays until the next request starts.
 
+## Expanded rows
+
+Expand a completed `.md` or `.markdown` write or full-file read to see rendered Markdown. Headings, lists, tables, links, and fenced code use the active Pi theme, the same way Pi draws a reply. A partial or truncated Markdown read keeps Pi's own view. The collapsed transcript keeps its one-line summary.
+
+Expand a read or write of source to see the file's line numbers and syntax colors. A line that does not fit continues under its own indent, so the block still reads as code. A read with a line limit shows just those lines, and its row says how many more the file holds; a truncated read keeps Pi's own view, with its continuation notice.
+
 ## Quick start
 
 Requires Pi 1.0.4 or newer. Zen draws tool calls through Pi's tool renderer API, so it never re-registers or wraps a tool: what runs, and how, is Pi's alone.
