@@ -86,11 +86,8 @@ export function restoreLiveTheme(): void {
 export function liveSentInk(): SentInk {
 	const theme = installedTheme();
 	if (theme === undefined) return PLAIN_INK;
-	const canvas = quietThemes().get(theme) ?? theme;
-	const wash = canvas.getBgAnsi.call(theme, "userMessageBg");
 	return {
 		words: theme.getFgAnsi("text"),
 		mark: theme.getFgAnsi("border"),
-		wash: wash === OPEN_CANVAS ? undefined : wash,
 	};
 }

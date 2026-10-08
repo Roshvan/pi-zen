@@ -5,10 +5,9 @@ import { wrapInlineMarkdown } from "./inline-markdown-wrap.ts";
 export type SentInk = {
 	readonly words: string;
 	readonly mark: string;
-	readonly wash: string | undefined;
 };
 
-export const PLAIN_INK: SentInk = { words: "", mark: "", wash: undefined };
+export const PLAIN_INK: SentInk = { words: "", mark: "" };
 
 type MessageLook = {
 	readonly ink: SentInk;
@@ -24,12 +23,7 @@ const SHORT_THINKING_LINES = 5;
 const SHORT_TERMINAL_ROWS = 24;
 const CUT_MARK = "…";
 
-const SENT_MARK = "›";
 const SENT_PAD = "\u00A0";
-const HANGING_LEAD = `${SENT_PAD}${SENT_PAD}`;
-const STROKE_ON = "\x1b[1m";
-const STROKE_OFF = "\x1b[22m";
-const WASH_END = "\x1b[49m";
 const NARROWEST_FRAME = 8;
 const FRAME_COLUMNS = 3;
 
@@ -130,7 +124,8 @@ function placeSent(blocks: readonly Block[], width: number, ink: SentInk): strin
 	if (width < NARROWEST_FRAME) return joined(blocks);
 
 	const room = width - FRAME_COLUMNS;
-	return blocks.flatMap((block) => placedBlock(block, room, ink)).join("\n\n");
+	const body = blocks.flatMap((block) => placedBlock(block, room, ink)).join("\n\n");
+	return `${ink.mark}╭${ink.words}\n${body}\n${ink.mark}╰${ink.words}`;
 }
 
 function placedBlock(block: Block, room: number, ink: SentInk): readonly string[] {
@@ -144,17 +139,12 @@ function placedBlock(block: Block, room: number, ink: SentInk): readonly string[
 
 function frameSent(lines: readonly string[], room: number, ink: SentInk): string {
 	const rows = lines.flatMap((line) => (isBlank(line) ? [""] : wrapInlineMarkdown(line, room)));
-	const marked = rows.findIndex((row) => !isBlank(row));
 
 	return rows
-		.map((row, index) => {
+		.map((row) => {
 			if (isBlank(row)) return "";
-			const lead = index === marked ? `${STROKE_ON}${ink.mark}${SENT_MARK}${STROKE_OFF}${SENT_PAD}` : HANGING_LEAD;
-			return washed(`${lead}${ink.words}${row}`, ink.wash);
+			return `${SENT_PAD}${SENT_PAD}${ink.words}${row}`;
 		})
 		.join("\n");
 }
 
-function washed(line: string, wash: string | undefined): string {
-	return wash === undefined ? line : `${wash}${line}${SENT_PAD}${WASH_END}`;
-}
