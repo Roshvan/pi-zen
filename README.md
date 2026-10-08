@@ -4,7 +4,7 @@ I built `pi-zen` because I wanted a minimal interface that made it easier to sta
 
 For real knowledge work, I like being an active participant. I want to understand what is happening between the AI and me so we can be good partners in making decisions. `pi-zen` gives me that space: clear responses, visible progress, and the useful parts of the session in a calm, visually appealing interface.
 
-`pi-zen` is a presentation extension for the [Pi](https://pi.dev) terminal interface. It removes visual clutter while preserving conversations, tool activity, reasoning, and session data. The terminal stays an open canvas: a sent turn starts with a › and the words hang under it on a quiet tint from the theme, while replies and reasoning stay on the page without names or filled panels. It also adds compact tool summaries and diffs, a minimal editor rail, a quieter startup, a quiet loading mark that names the work in progress, and a live reading of where the current request's time is going, without changing tool execution or model prompts.
+`pi-zen` is a presentation extension for the [Pi](https://pi.dev) terminal interface. It removes visual clutter while preserving conversations, tool activity, reasoning, and session data. The terminal stays an open canvas: a sent turn is framed by small left corners with indented text, without a background fill, while replies and reasoning stay on the page without names or filled panels. It also adds compact tool summaries and diffs, a minimal editor rail, a quieter startup, a quiet loading mark that names the work in progress, and a live reading of where the current request's time is going, without changing tool execution or model prompts.
 
 ## Showcase
 
