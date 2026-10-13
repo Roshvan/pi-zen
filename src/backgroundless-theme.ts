@@ -12,6 +12,21 @@ const CONTENT_BACKGROUNDS: ReadonlySet<ThemeBg> = new Set([
 
 const OPEN_CANVAS = "\x1b[49m";
 
+// Colors embedded in tool rows, output, Markdown and syntax highlighting. Public
+// ANSI lookups (Pi >=1.0.4) detect both stable theme proxies and palette mutation.
+const RENDER_COLORS: readonly ThemeColor[] = [
+	"accent", "text", "muted", "dim", "success", "error", "warning", "toolTitle", "toolOutput",
+	"toolDiffAdded", "toolDiffRemoved", "toolDiffContext",
+	"mdHeading", "mdLink", "mdLinkUrl", "mdCode", "mdCodeBlock", "mdCodeBlockBorder",
+	"mdQuote", "mdQuoteBorder", "mdHr", "mdListBullet",
+	"syntaxComment", "syntaxKeyword", "syntaxFunction", "syntaxVariable", "syntaxString",
+	"syntaxNumber", "syntaxType", "syntaxOperator", "syntaxPunctuation",
+];
+
+export function renderPalette(theme: Pick<Theme, "getFgAnsi">): string {
+	return RENDER_COLORS.map((color) => theme.getFgAnsi(color)).join("|");
+}
+
 const INSTALLED_THEME = Symbol.for("@earendil-works/pi-coding-agent:theme");
 
 type ThemeCanvas = {
@@ -42,7 +57,7 @@ function parseInstalledTheme(slot: PropertyDescriptor | undefined): Theme | unde
 	return isThemeInstance(installed) ? installed : undefined;
 }
 
-function installedTheme(): Theme | undefined {
+export function liveTheme(): Theme | undefined {
 	return parseInstalledTheme(Object.getOwnPropertyDescriptor(globalThis, INSTALLED_THEME));
 }
 
@@ -52,7 +67,7 @@ function backgroundlessForeground(color: ThemeColor): ThemeColor {
 }
 
 export function quietLiveTheme(): Theme | undefined {
-	const theme = installedTheme();
+	const theme = liveTheme();
 	if (theme === undefined) return undefined;
 	const quiet = quietThemes();
 	if (quiet.has(theme)) return theme;
@@ -74,7 +89,7 @@ export function quietLiveTheme(): Theme | undefined {
 }
 
 export function restoreLiveTheme(): void {
-	const theme = installedTheme();
+	const theme = liveTheme();
 	if (theme === undefined) return;
 	const quiet = quietThemes();
 	const canvas = quiet.get(theme);
@@ -84,7 +99,7 @@ export function restoreLiveTheme(): void {
 }
 
 export function liveSentInk(): SentInk {
-	const theme = installedTheme();
+	const theme = liveTheme();
 	if (theme === undefined) return PLAIN_INK;
 	return {
 		words: theme.getFgAnsi("text"),

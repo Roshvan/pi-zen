@@ -3,6 +3,7 @@ import { stripVTControlCharacters } from "node:util";
 import { getLanguageFromPath, highlightCode, type Theme } from "@earendil-works/pi-coding-agent";
 import { type Component, sliceByColumn, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 
+import { liveTheme, renderPalette } from "./backgroundless-theme.ts";
 import { widthCached } from "./width-cache.ts";
 
 export type SourceFile = {
@@ -54,6 +55,12 @@ function frameSource(lines: readonly string[], startLine: number, width: number,
 }
 
 export function sourceLayout(file: SourceFile, theme: Theme): Component {
-	const colored = highlightCode(file.text.replaceAll("\t", TAB), getLanguageFromPath(file.path));
-	return widthCached((width) => frameSource(colored, file.startLine, width, theme), []);
+	let colored: { readonly palette: string; readonly lines: readonly string[] } | undefined;
+	return widthCached((width) => {
+		const palette = renderPalette(liveTheme() ?? theme);
+		if (colored === undefined || colored.palette !== palette) {
+			colored = { palette, lines: highlightCode(file.text.replaceAll("\t", TAB), getLanguageFromPath(file.path)) };
+		}
+		return frameSource(colored.lines, file.startLine, width, theme);
+	}, []);
 }

@@ -1,6 +1,6 @@
 {
 	"name": "pi-zen",
-	"version": "0.3.2",
+	"version": "0.3.3",
 	"description": "A quiet Pi TUI on one switch: clear turn markers, a rail editor, compact tool calls, and restrained reasoning",
 	"type": "module",
 	"packageManager": "pnpm@11.25.0",
@@ -35,6 +35,7 @@
 	],
 	"scripts": {
 		"check": "tsc --noEmit && oxlint",
+		"bench": "node benchmarks/render-bench.ts",
 		"dev": "pi -e ./extensions/zen.ts",
 		"lint": "oxlint",
 		"pack:check": "pnpm pack --dry-run",

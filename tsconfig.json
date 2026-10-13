@@ -19,6 +19,7 @@
 	},
 	"include": [
 		"extensions/**/*.ts",
-		"src/**/*.ts"
+		"src/**/*.ts",
+		"benchmarks/**/*.ts"
 	]
 }

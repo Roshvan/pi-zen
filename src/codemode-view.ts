@@ -32,6 +32,7 @@ import {
 } from "./tool-calls.ts";
 import { firstActionableLine, toolOutput } from "./tool-results.ts";
 import {
+	attention,
 	formatDuration,
 	formatToolRow,
 	plural,
@@ -157,7 +158,7 @@ function scriptRun(code: string, progress: Progress, cwd: string): ScriptRun {
 			? records.map((record) => recordStep(record, cwd))
 			: script.calls.map((call) => scriptStep(call, cwd));
 	const output = result === undefined ? [] : outputLines(toolOutput(result.content).body);
-	const shown = shownResult(progress, output, steps.length);
+	const shown = shownResult(progress, output, steps);
 	return {
 		row: {
 			verb: "code",
@@ -170,7 +171,7 @@ function scriptRun(code: string, progress: Progress, cwd: string): ScriptRun {
 	};
 }
 
-function shownResult(progress: Progress, output: readonly string[], callCount: number): ShownResult {
+function shownResult(progress: Progress, output: readonly string[], steps: readonly Step[]): ShownResult {
 	switch (progress.kind) {
 		case "writing":
 		case "running":
@@ -178,7 +179,14 @@ function shownResult(progress: Progress, output: readonly string[], callCount: n
 		case "failed":
 			return { outcome: { kind: "failed", reason: scriptFailure(output) }, output: clippedOutput(output) };
 		case "succeeded": {
-			const answer = answerOf(output, callCount, progress.elapsedMs);
+			const failed = steps.filter((step) => step.outcome.kind === "failed").length;
+			if (failed > 0) {
+				return {
+					outcome: settled(attention(`${plural(steps.length, "call", "calls")} · ${failed} failed`)),
+					output: clippedOutput(output),
+				};
+			}
+			const answer = answerOf(output, steps.length, progress.elapsedMs);
 			if (answer.kind === "echo") return { outcome: settled(quiet(answer.line)), output: [] };
 			return {
 				outcome: settled(answer.text === undefined ? undefined : quiet(answer.text)),
