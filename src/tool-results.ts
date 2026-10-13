@@ -30,6 +30,16 @@ const NEWLINE = 0x0a;
 const FIRST_PRINTABLE = 0x20;
 const SPECIALS = { first: 0xfff9, last: 0xfffb };
 const TRAILING_NOTICE = /\n\n\[([^\n]*)\]$/;
+const PI_NOTICES = [
+	/^\d+ more lines in file\. Use offset=\d+ to continue\.$/,
+	/^Showing lines \d+-\d+ of \d+(?: \(\d+(?:\.\d+)?(?:B|KB|MB) limit\))?\. (?:Use offset=\d+ to continue\.|Full output: .+)$/,
+	/^Showing last \d+(?:\.\d+)?(?:B|KB|MB) of line \d+ \(line is \d+(?:\.\d+)?(?:B|KB|MB)\)\. Full output: .+$/,
+];
+const PI_LIMIT_NOTICES = [
+	/^\d+ (?:results|matches|entries) limit reached(?:\. Use limit=\d+ for more(?:, or refine pattern)?)?$/,
+	/^\d+(?:\.\d+)?(?:B|KB|MB) limit reached$/,
+	/^Some lines truncated to \d+ chars\. Use read tool to see full lines$/,
+];
 const MATCH_LINE = /:\d+:/;
 const NOTHING_FOUND: ReadonlySet<string> = new Set(["No files found matching pattern", "(empty directory)", "No matches found"]);
 const ERRNO_PATH_CLAUSE =
@@ -47,12 +57,19 @@ function printable(text: string): string {
 	return chars.some(isUnprintable) ? chars.filter((char) => !isUnprintable(char)).join("") : stripped;
 }
 
+function isPiNotice(notice: string): boolean {
+	if (PI_NOTICES.some((format) => format.test(notice))) return true;
+	// Find/grep/ls join limit notices with ". "; keep their usage instructions together.
+	return notice.split(/\. (?=\d|Some lines truncated)/).every((part) => PI_LIMIT_NOTICES.some((format) => format.test(part)));
+}
+
 export function toolOutput(content: readonly ContentBlock[]): ToolOutput {
 	const text = content
 		.filter((block) => block.type === "text")
 		.map((block) => printable(block.text ?? ""))
 		.join("\n");
-	const notice = TRAILING_NOTICE.exec(text);
+	const trailing = TRAILING_NOTICE.exec(text);
+	const notice = trailing !== null && isPiNotice(trailing[1] ?? "") ? trailing : null;
 	return {
 		body: notice === null ? text : text.slice(0, notice.index),
 		notice: notice?.[1],

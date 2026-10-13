@@ -8,17 +8,21 @@ For real knowledge work, I like being an active participant. I want to understan
 
 ## Showcase
 
+A tiny TypeScript dinner planner for Mochi, Miso, and Nori: personalized portions, and no second dinner for Miso, our resident snack thief. Captured from live Pi sessions in Rex, running the local extension. The screenshots keep tool rows compact; the GIF opens them to show the code.
+
 ### Light mode
 
-![Pi Zen in light mode](screenshots/pi-zen-light.png)
+![Pi Zen in light mode with compact cat dinner planner tool rows](screenshots/pi-zen-light.png)
 
 ### Dark mode
 
-![Pi Zen in dark mode](screenshots/pi-zen-dark.png)
+![Pi Zen in dark mode with compact cat dinner planner tool rows](screenshots/pi-zen-dark.png)
 
-### Coding cat demo
+### Cat café coding demo
 
-![Pi Zen coding cat demo](screenshots/pi-zen-coding-cat.gif)
+Read the planner, edit the feeding rules, and run it. The GIF shows compact tool rows and the live activity line, then `Ctrl+O` reveals the source, syntax-highlighted diff, and dinner menu.
+
+![Pi Zen updating and running a cat dinner planner](screenshots/pi-zen-coding-cat.gif)
 
 ## While a request runs
 
@@ -38,7 +42,11 @@ Expand a completed `.md` or `.markdown` write or full-file read to see rendered 
 
 Expand a read or write of source to see the file's line numbers and syntax colors. A line that does not fit continues under its own indent, so the block still reads as code. A read with a line limit shows just those lines, and its row says how many more the file holds; a truncated read keeps Pi's own view, with its continuation notice.
 
-A codemode script collapses to one row, named by its comment, with the answer beside it when that answer is one short line. Expanding the row lists the calls inside the script, the same way a read or a grep would read on its own.
+Edits collapse to one quiet row with the file path and change counts. Code appears only when expanded: every reported hunk keeps its syntax colors, additions and removals are marked in the gutter, and long lines wrap to fit the terminal. Everything follows the active theme, including rows that were hidden when the theme changed. Completed rows reuse their parsed results and layouts across expansion and redraws, and syntax highlighting waits until expansion.
+
+Expand a shell command to see its complete syntax-highlighted source, followed by its output and any truncation notice. Failed tools keep their error summary in the compact row and reveal the full reported error when expanded.
+
+A codemode script collapses to one row, named by its comment, with the answer beside it when that answer is one short line. Expanding the row lists the calls inside the script, the same way a read or a grep would read on its own. A nested failure stays visible in the compact summary even when the script handles it.
 
 On Pi 1.1 or newer, tool rows follow the `outputPad` setting, and shell and codemode summaries use Pi's recorded execution time, so timings survive `/reload` and session resumes. Older Pi versions keep Zen's existing layout and timing fallback.
 
@@ -67,7 +75,7 @@ pnpm install
 pnpm dev
 ```
 
-Before submitting a change, run `pnpm check` (typecheck and lint) and `pnpm pack:check`.
+Before submitting a change, run `pnpm check` (typecheck and lint) and `pnpm pack:check`. Run `pnpm bench` to measure diff parsing, compact redraws, resizing, and expansion.
 
 ## Issues and contributions
 

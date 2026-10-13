@@ -6,6 +6,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Box, type Component, Container, Text } from "@earendil-works/pi-tui";
 
+import { quietLiveTheme, renderPalette } from "./backgroundless-theme.ts";
 import {
 	type CallRuns,
 	formatGroupLine,
@@ -16,7 +17,7 @@ import {
 	type RunSeat,
 } from "./call-group.ts";
 import { codemodeRenderers } from "./codemode-view.ts";
-import { type EditDiff, editDiff, editSummary, renderDiff } from "./edit-diff.ts";
+import { diffLayout, type EditDiff, editDiff, editSummary } from "./edit-diff.ts";
 import {
 	type Clock,
 	elapsedOf,
@@ -31,6 +32,7 @@ import {
 	startClock,
 } from "./pi-renderers.ts";
 import { type PreviewBody, rowPreview } from "./row-preview.ts";
+import { sourceLayout } from "./source-view.ts";
 import {
 	builtInTool,
 	type BuiltInTool,
@@ -70,6 +72,7 @@ import {
 	settled,
 	type ToolRow,
 } from "./tool-row.ts";
+import { isFiniteNumber, isString } from "./value-guards.ts";
 import { widthCached } from "./width-cache.ts";
 
 const STREAMING_TAIL_LINES = 10;
@@ -82,6 +85,19 @@ type Settled<Call> = {
 	readonly details: ToolDetails;
 	readonly diff: EditDiff | undefined;
 	readonly elapsedMs: number | undefined;
+};
+
+type CachedResult<Call> = {
+	readonly args: unknown;
+	readonly content: RenderedResult["content"];
+	readonly details: unknown;
+	readonly error: boolean;
+	readonly images: boolean;
+	readonly cwd: string;
+	readonly shown: Settled<Call>;
+	palette: string;
+	compact: Component | undefined;
+	expanded: Component | undefined;
 };
 
 type PreviewTarget = {
@@ -117,11 +133,11 @@ type GroupLines = {
 	readonly lines: string[];
 };
 
-function rowComponent(row: ToolRow, diff: EditDiff | undefined, line: () => RunLine, palette: RowPalette): Component {
+function rowComponent(row: ToolRow, diff: Component | undefined, line: () => RunLine, palette: RowPalette): Component {
 	const own = widthCached((width) => {
 		const head = formatToolRow(row, width, palette);
-		return diff === undefined ? [head] : [head, ...renderDiff(diff.lines, width, palette)];
-	}, []);
+		return diff === undefined ? [head] : [head, ...diff.render(width)];
+	}, diff === undefined ? [] : [diff]);
 	let group: GroupLines | undefined;
 	return {
 		invalidate: () => {
@@ -192,22 +208,42 @@ function settledOf<Call>(call: Call, result: RenderedResult, context: RenderCont
 	};
 }
 
+function outputBody(output: ToolOutput, theme: Theme): Component {
+	const body = output.body === "" ? nothing() : new Text(theme.fg("toolOutput", output.body), 2, 0);
+	return output.notice === undefined ? body : stacked(body, new Text(theme.fg("warning", output.notice), 2, 0));
+}
+
 function viewRenderers<Call>(tool: BuiltInTool, spec: ViewSpec<Call>): ToolView {
 	return (pi, runs, showsZen, now) => {
+		const results = new WeakMap<object, CachedResult<Call>>();
 		const expandedResult = (
 			row: ToolRow,
 			shown: Settled<Call>,
 			piView: () => Component | undefined,
 			theme: Theme,
+			input: ToolInput,
 		): Component => {
-			const preview = row.outcome.kind === "failed" ? undefined : spec.preview;
+			if (tool === "edit" && row.outcome.kind !== "failed" && shown.diff !== undefined) {
+				return rowComponent(row, diffLayout(shown.diff, readSpan(input).path, theme), OWN_SEAT.line, theme);
+			}
+			const head = rowComponent(row, undefined, OWN_SEAT.line, theme);
+			if (tool === "bash" || tool === "powershell") {
+				const command = isString(input.command) ? input.command : "";
+				const source = sourceLayout({ path: tool === "bash" ? "command.sh" : "command.ps1", text: command, startLine: 1 }, theme);
+				const metadata = isFiniteNumber(input.timeout) && input.timeout > 0
+					? stacked(head, new Text(theme.fg("dim", `timeout ${input.timeout}s`), 2, 0))
+					: head;
+				return stacked(stacked(metadata, source), outputBody(shown.output, theme));
+			}
+			if (row.outcome.kind === "failed") return stacked(head, outputBody(shown.output, theme));
+			const preview = spec.preview;
 			const target = preview?.target(shown.call);
 			const text = target === undefined ? undefined : preview?.text(shown);
 			if (target !== undefined && text !== undefined) return rowPreview(row, previewBody(target, text), theme);
 
 			const own = piView();
 			const framed = own === undefined ? nothing() : boxed(own);
-			if (target === undefined) return framed;
+			if (target === undefined && tool !== "edit") return framed;
 			return stacked(rowComponent(row, undefined, OWN_SEAT.line, theme), framed);
 		};
 
@@ -225,12 +261,14 @@ function viewRenderers<Call>(tool: BuiltInTool, spec: ViewSpec<Call>): ToolView 
 					const row: ToolRow = { ...headingOf(tool, input, context.cwd), outcome: RUNNING };
 					return rowComponent(row, undefined, OWN_SEAT.line, theme);
 				}
-				if (!context.expanded) return nothing();
-				if (!context.isError && spec.preview?.target(spec.call(input)) !== undefined) return nothing();
+				if (!context.expanded || context.isError || tool === "bash" || tool === "powershell") return nothing();
+				if (tool === "edit" || spec.preview?.target(spec.call(input)) !== undefined) return nothing();
 				return piCall(pi, args, theme, context) ?? nothing();
 			},
 			(result, options, theme, context) => {
 				if (!showsZen()) return piResult(pi, result, options, theme, context) ?? nothing();
+				// Pi rebuilds tools before Zen's render-time theme follower can quiet a new palette.
+				quietLiveTheme();
 				if (options.isPartial) return context.expanded ? streamingTail(toolOutput(result.content), theme) : nothing();
 
 				const memory = rowMemory(context);
@@ -238,7 +276,30 @@ function viewRenderers<Call>(tool: BuiltInTool, spec: ViewSpec<Call>): ToolView 
 				settleClock(memory, now);
 				const seat = seatOf(spec.run, runs, context);
 				const input = toolInput(context.args);
-				const shown = settledOf(spec.call(input), result, context);
+				const palette = renderPalette(theme);
+				let cached = results.get(memory);
+				if (cached === undefined || cached.args !== context.args || cached.content !== result.content || cached.details !== result.details || cached.error !== context.isError || cached.images !== context.showImages || cached.cwd !== context.cwd) {
+					cached = {
+						args: context.args,
+						content: result.content,
+						details: result.details,
+						error: context.isError,
+						images: context.showImages,
+						cwd: context.cwd,
+						shown: settledOf(spec.call(input), result, context),
+						palette,
+						compact: undefined,
+						expanded: undefined,
+					};
+					results.set(memory, cached);
+				}
+				if (cached.palette !== palette) {
+					cached.palette = palette;
+					// Pi invalidates only the mounted view; discard inactive ANSI-bearing views too.
+					cached.compact = undefined;
+					cached.expanded = undefined;
+				}
+				const shown = cached.shown;
 				const outcome: RowOutcome = context.isError
 					? { kind: "failed", reason: spec.failure(shown.output) }
 					: settled(spec.detail(shown));
@@ -246,9 +307,11 @@ function viewRenderers<Call>(tool: BuiltInTool, spec: ViewSpec<Call>): ToolView 
 				const row: ToolRow = { ...headingOf(tool, input, context.cwd), outcome };
 
 				if (context.expanded) {
-					return expandedResult(row, shown, () => piResult(pi, result, options, theme, context), theme);
+					cached.expanded ??= expandedResult(row, shown, () => piResult(pi, result, options, theme, context), theme, input);
+					return cached.expanded;
 				}
-				return rowComponent(row, outcome.kind === "failed" ? undefined : shown.diff, seat.line, theme);
+				cached.compact ??= rowComponent(row, undefined, seat.line, theme);
+				return cached.compact;
 			},
 		);
 	};
