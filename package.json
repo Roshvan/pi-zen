@@ -50,8 +50,8 @@
 		"@earendil-works/pi-tui": ">=1.0.4"
 	},
 	"devDependencies": {
-		"@earendil-works/pi-coding-agent": "1.0.4",
-		"@earendil-works/pi-tui": "1.0.4",
+		"@earendil-works/pi-coding-agent": "1.2.0",
+		"@earendil-works/pi-tui": "1.2.0",
 		"@oxlint/plugins": "^1.83.0",
 		"@types/node": "^26.6.1",
 		"oxlint": "^1.83.0",

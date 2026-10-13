@@ -26,8 +26,9 @@ export function rowMemory(context: RenderContext): RowMemory {
 	return context.state;
 }
 
-export function elapsedOf(memory: RowMemory): number | undefined {
-	const { startedAt, endedAt } = memory;
+export function elapsedOf(context: RenderContext): number | undefined {
+	if (context.durationMs !== undefined) return context.durationMs;
+	const { startedAt, endedAt } = rowMemory(context);
 	return startedAt === undefined || endedAt === undefined ? undefined : endedAt - startedAt;
 }
 
@@ -44,9 +45,13 @@ export function settleClock(memory: RowMemory, now: Clock): void {
 
 const RIGHT_MARGIN = 1;
 
-function narrowed(component: Component): Component {
+function padded(component: Component, padding: number): Component {
+	const indent = " ".repeat(padding);
 	return {
-		render: (width) => (width > RIGHT_MARGIN ? component.render(width - RIGHT_MARGIN) : []),
+		render: (width) => {
+			const room = width - padding * 2 - RIGHT_MARGIN;
+			return room > 0 ? component.render(room).map((line) => indent + line) : [];
+		},
 		invalidate: () => component.invalidate(),
 	};
 }
@@ -54,8 +59,9 @@ function narrowed(component: Component): Component {
 export function selfShell(renderCall: CallSlot, renderResult: ResultSlot): ToolRenderers {
 	return {
 		renderShell: "self",
-		renderCall: (args, theme, context) => narrowed(renderCall(args, theme, context)),
-		renderResult: (result, options, theme, context) => narrowed(renderResult(result, options, theme, context)),
+		// Older hosts have neither outputPad nor recorded durations; keep their existing layout and clock fallback.
+		renderCall: (args, theme, context) => padded(renderCall(args, theme, context), context.outputPad ?? 0),
+		renderResult: (result, options, theme, context) => padded(renderResult(result, options, theme, context), context.outputPad ?? 0),
 	};
 }
 

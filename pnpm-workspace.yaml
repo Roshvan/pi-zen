@@ -3,13 +3,12 @@ allowBuilds:
   esbuild: false
   protobufjs: false
 minimumReleaseAge: 10080
-# Existing locked versions are grandfathered; future versions must age seven days.
+# Reviewed Pi 1.2.0 versions are exempt; other releases must age seven days.
 minimumReleaseAgeExclude:
-  - '@earendil-works/chord@1.0.4'
-  - '@earendil-works/pi-agent-core@1.0.4'
-  - '@earendil-works/pi-ai@1.0.4'
-  - '@earendil-works/pi-codemode@1.0.4'
-  - '@earendil-works/pi-coding-agent@1.0.4'
-  - '@earendil-works/pi-mcp@1.0.4'
-  - '@earendil-works/pi-telemetry@1.0.4'
-  - '@earendil-works/pi-tui@1.0.4'
+  - '@earendil-works/pi-agent-core@1.2.0'
+  - '@earendil-works/pi-ai@1.2.0'
+  - '@earendil-works/pi-codemode@1.2.0'
+  - '@earendil-works/pi-coding-agent@1.2.0'
+  - '@earendil-works/pi-mcp@1.2.0'
+  - '@earendil-works/pi-telemetry@1.2.0'
+  - '@earendil-works/pi-tui@1.2.0'

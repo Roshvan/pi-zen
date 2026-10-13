@@ -112,7 +112,7 @@ export function codemodeRenderers(pi: ToolRenderers | undefined, showsZen: () =>
 			settleClock(memory, now);
 			const progress: Progress = context.isError
 				? { kind: "failed", result }
-				: { kind: "succeeded", result, elapsedMs: elapsedOf(memory) };
+				: { kind: "succeeded", result, elapsedMs: elapsedOf(context) };
 			return scriptView(scriptRun(code, progress, context.cwd), layoutFor(context), theme);
 		},
 	);

@@ -40,6 +40,8 @@ Expand a read or write of source to see the file's line numbers and syntax color
 
 A codemode script collapses to one row, named by its comment, with the answer beside it when that answer is one short line. Expanding the row lists the calls inside the script, the same way a read or a grep would read on its own.
 
+On Pi 1.1 or newer, tool rows follow the `outputPad` setting, and shell and codemode summaries use Pi's recorded execution time, so timings survive `/reload` and session resumes. Older Pi versions keep Zen's existing layout and timing fallback.
+
 ## Quick start
 
 Requires Pi 1.0.4 or newer. Zen draws tool calls through Pi's tool renderer API, so it never re-registers or wraps a tool: what runs, and how, is Pi's alone.
@@ -56,7 +58,7 @@ Zen also quiets Pi's startup screen. If `quietStartup` is off in your global Pi 
 
 ## Development
 
-You will need Node.js 22.19 or newer and pnpm. Clone the repository, install the dependencies, and start Pi with the local extension:
+You will need Node.js 22.19 or newer and pnpm. Development dependencies target Pi 1.2.0; the extension still supports Pi 1.0.4 or newer. Clone the repository, install the dependencies, and start Pi with the local extension:
 
 ```sh
 git clone https://github.com/Roshvan/pi-zen.git
