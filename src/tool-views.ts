@@ -188,7 +188,7 @@ function settledOf<Call>(call: Call, result: RenderedResult, context: RenderCont
 		output: toolOutput(result.content),
 		details,
 		diff: patch === undefined ? undefined : editDiff(patch),
-		elapsedMs: elapsedOf(rowMemory(context)),
+		elapsedMs: elapsedOf(context),
 	};
 }
 
