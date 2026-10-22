@@ -8,10 +8,10 @@ export function parseRecord<Value, Parsed>(value: Value, fallback: Parsed): Pars
 	return isRecordOf<Value, Parsed>(value) ? value : fallback;
 }
 
-export function isString(value: string | null | undefined): value is string {
+export function isString<Value>(value: Value): value is Value & string {
 	return typeof value === "string";
 }
 
-export function isFiniteNumber(value: number | null | undefined): value is number {
+export function isFiniteNumber<Value>(value: Value): value is Value & number {
 	return typeof value === "number" && Number.isFinite(value);
 }

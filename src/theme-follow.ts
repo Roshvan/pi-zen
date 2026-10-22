@@ -21,6 +21,7 @@ export function createThemeFollow(): ThemeFollow {
 	const draw = (ui: ExtensionUIContext): void => {
 		const drawnFor = quietLiveTheme();
 		installWorkingIndicator(ui);
+		ui.setHiddenThinkingLabel("");
 		following = { ui, drawnFor };
 	};
 
@@ -55,6 +56,7 @@ export function createThemeFollow(): ThemeFollow {
 			following = undefined;
 			restoreLiveTheme();
 			ui.setWorkingIndicator();
+			ui.setHiddenThinkingLabel();
 		},
 		sync,
 		syncAfterRender: () => whenThemeMoved(syncSoon),

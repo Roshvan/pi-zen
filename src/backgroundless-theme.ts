@@ -36,14 +36,13 @@ type ThemeCanvas = {
 	readonly getFgAnsi: Theme["getFgAnsi"];
 };
 
-declare global {
-	var piZenQuietThemes: WeakMap<Theme, ThemeCanvas> | undefined;
-}
+type QuietTheme = {
+	readonly theme: Theme;
+	readonly canvas: ThemeCanvas;
+};
 
-function quietThemes(): WeakMap<Theme, ThemeCanvas> {
-	const carried = globalThis.piZenQuietThemes ?? new WeakMap<Theme, ThemeCanvas>();
-	globalThis.piZenQuietThemes = carried;
-	return carried;
+declare global {
+	var piZenQuietTheme: QuietTheme | undefined;
 }
 
 function isThemeInstance(value: Theme | null | undefined): value is Theme {
@@ -68,9 +67,9 @@ function backgroundlessForeground(color: ThemeColor): ThemeColor {
 
 export function quietLiveTheme(): Theme | undefined {
 	const theme = liveTheme();
+	if (globalThis.piZenQuietTheme?.theme === theme) return theme;
+	restoreLiveTheme();
 	if (theme === undefined) return undefined;
-	const quiet = quietThemes();
-	if (quiet.has(theme)) return theme;
 
 	const canvas: ThemeCanvas = {
 		bg: theme.bg,
@@ -83,19 +82,17 @@ export function quietLiveTheme(): Theme | undefined {
 	theme.bg = (color: ThemeBg, text: string): string =>
 		CONTENT_BACKGROUNDS.has(color) ? text : canvas.bg.call(theme, color, text);
 	theme.getFgAnsi = (color: ThemeColor): string => canvas.getFgAnsi.call(theme, backgroundlessForeground(color));
-	theme.fg = (color: ThemeColor, text: string): string => canvas.fg.call(theme, backgroundlessForeground(color), text);
-	quiet.set(theme, canvas);
+	theme.fg = (color: ThemeColor, text: string): string =>
+		color === "mdCodeBlockBorder" ? "" : canvas.fg.call(theme, backgroundlessForeground(color), text);
+	globalThis.piZenQuietTheme = { theme, canvas };
 	return theme;
 }
 
 export function restoreLiveTheme(): void {
-	const theme = liveTheme();
-	if (theme === undefined) return;
-	const quiet = quietThemes();
-	const canvas = quiet.get(theme);
-	if (canvas === undefined) return;
-	quiet.delete(theme);
-	Object.assign(theme, canvas);
+	const quiet = globalThis.piZenQuietTheme;
+	if (quiet === undefined) return;
+	globalThis.piZenQuietTheme = undefined;
+	Object.assign(quiet.theme, quiet.canvas);
 }
 
 export function liveSentInk(): SentInk {
