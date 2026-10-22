@@ -26,8 +26,7 @@ export function withTool(activity: WorkActivity, id: string, label: string): Wor
 
 export function activityPhrase(activity: WorkActivity): string {
 	if (activity.tools.length === 0) return activity.phase;
-	return activity.tools
-		.map((tool) => tool.label)
-		.reverse()
-		.join(" · ");
+	const counts = new Map<string, number>();
+	for (const tool of [...activity.tools].reverse()) counts.set(tool.label, (counts.get(tool.label) ?? 0) + 1);
+	return [...counts].map(([label, count]) => count === 1 ? label : `${label} (${count})`).join(" · ");
 }

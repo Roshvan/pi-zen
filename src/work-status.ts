@@ -36,7 +36,7 @@ export function createWorkStatus(): WorkStatus {
 		const { ui } = line;
 		const activity = next(line._tag === "Working" ? line.activity : STARTING_ACTIVITY);
 		const phrase = activityPhrase(activity);
-		if (line._tag === "Resting" || line.phrase !== phrase) ui.setWorkingMessage(ui.theme.fg("text", phrase));
+		if (line._tag === "Resting" || line.phrase !== phrase) ui.setWorkingMessage(ui.theme.fg("muted", phrase));
 		line = { _tag: "Working", ui, activity, phrase };
 	};
 

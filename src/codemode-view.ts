@@ -23,7 +23,6 @@ import { sourceLayout } from "./source-view.ts";
 import {
 	builtInTool,
 	type CallHeading,
-	headingLabel,
 	headingOf,
 	labelToolCall,
 	scriptSource,
@@ -161,8 +160,8 @@ function scriptRun(code: string, progress: Progress, cwd: string): ScriptRun {
 	const shown = shownResult(progress, output, steps);
 	return {
 		row: {
-			verb: "code",
-			subject: { text: script.note ?? stepsSubject(steps), elide: "end" },
+			verb: "run",
+			subject: { text: script.note ?? "script", elide: "end" },
 			outcome: shown.outcome,
 		},
 		steps,
@@ -245,12 +244,6 @@ function recordOutcome(record: ReportedCall): RowOutcome {
 		case "ok":
 			return settled(isFiniteNumber(record.durationMs) ? quiet(formatDuration(record.durationMs)) : undefined);
 	}
-}
-
-function stepsSubject(steps: readonly Step[]): string {
-	const first = steps[0];
-	if (first === undefined) return "a script";
-	return headingLabel(first.heading);
 }
 
 function outputLines(text: string): readonly string[] {

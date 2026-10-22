@@ -6,7 +6,7 @@ import type {
 	LsToolDetails,
 	ReadToolDetails,
 } from "@earendil-works/pi-coding-agent";
-import { stripTerminalSequences } from "@earendil-works/pi-tui";
+import { stripTerminalSequences, visibleWidth } from "@earendil-works/pi-tui";
 
 import { isString, parseRecord, type Reported } from "./value-guards.ts";
 
@@ -45,6 +45,7 @@ const NOTHING_FOUND: ReadonlySet<string> = new Set(["No files found matching pat
 const ERRNO_PATH_CLAUSE =
 	/,\s*(?:access|open|stat|lstat|scandir|read|write|unlink|mkdir|rmdir|copyfile|rename)\s+'[^']*'\s*$/;
 const BASH_STATUS = /^Command (?:exited with code (\d+)|aborted|timed out after (\S+) seconds)$/;
+const DIAGNOSTIC = /\b(?:error|fatal|failed|exception|traceback)\b/i;
 
 function isUnprintable(char: string): boolean {
 	const code = char.codePointAt(0) ?? 0;
@@ -124,6 +125,13 @@ export function firstActionableLine(output: string): string | undefined {
 	return first?.replace(ERRNO_PATH_CLAUSE, "");
 }
 
+export function shortOutputLine(output: ToolOutput): string | undefined {
+	if (output.image || output.notice !== undefined) return undefined;
+	const lines = output.body.split("\n").map((line) => line.trim()).filter((line) => line !== "");
+	const first = lines.at(0);
+	return lines.length === 1 && first !== undefined && first !== "(no output)" && visibleWidth(first) <= 72 ? first : undefined;
+}
+
 function statusLabel(status: RegExpExecArray): string {
 	const [, code, timeout] = status;
 	if (code !== undefined) return `exit ${code}`;
@@ -135,7 +143,7 @@ export function bashFailureSummary(output: string): string | undefined {
 		.split("\n")
 		.map((line) => line.trim())
 		.filter((line) => line !== "");
-	const first = lines.at(0);
+	const first = lines.find((line) => !BASH_STATUS.test(line) && DIAGNOSTIC.test(line)) ?? lines.at(0);
 	const last = lines.at(-1);
 	const status = last === undefined ? null : BASH_STATUS.exec(last);
 	if (status === null) return first;

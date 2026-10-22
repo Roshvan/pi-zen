@@ -54,6 +54,7 @@ import {
 	isTruncated,
 	reachedLimit,
 	reportedPatch,
+	shortOutputLine,
 	type ToolDetails,
 	toolDetails,
 	type ToolOutput,
@@ -380,7 +381,14 @@ const READ: ViewSpec<ReadSpan> = {
 const RUN: ViewSpec<undefined> = {
 	run: "run",
 	call: ignoredInput,
-	detail: ({ details, elapsedMs }) => withTruncation(elapsedMs === undefined ? [] : [formatDuration(elapsedMs)], details),
+	detail: ({ output, details, elapsedMs }) => {
+		const answer = shortOutputLine(output);
+		const parts = [
+			...(answer === undefined ? [] : [answer]),
+			...(elapsedMs === undefined ? [] : [formatDuration(elapsedMs)]),
+		];
+		return withTruncation(parts, details);
+	},
 	failure: (output) => bashFailureSummary(output.body),
 	preview: undefined,
 };

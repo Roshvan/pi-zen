@@ -56,8 +56,9 @@ function presentText(value: string | null | undefined): string | undefined {
 	return isString(value) && value.trim() !== "" ? value : undefined;
 }
 
-function positiveInteger(value: number | null | undefined): number | undefined {
-	return isFiniteNumber(value) && Number.isInteger(value) && value > 0 ? value : undefined;
+function positiveInteger(value: number | string | null | undefined): number | undefined {
+	const parsed = isString(value) && value.trim() !== "" ? Number(value) : value;
+	return isFiniteNumber(parsed) && Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 function firstLine(text: string): string {
@@ -67,7 +68,8 @@ function firstLine(text: string): string {
 function commandHead(command: string): string {
 	const lines = command.split("\n").filter((line) => line.trim() !== "");
 	const head = lines.at(0)?.trim() ?? "";
-	return lines.length > 1 ? `${head} …` : head;
+	if (lines.length > 1) return "shell script";
+	return head.length > 64 || /[;&|<>`$(){}]/.test(head) ? "shell command" : head;
 }
 
 const pathSubject: Subject = (input, cwd) => {
@@ -136,6 +138,21 @@ export function headingLabel(heading: CallHeading): string {
 
 export function labelToolCall(name: string, input: ToolInput, cwd: string): string {
 	return headingLabel(callHeading(name, input, cwd));
+}
+
+export function workLabel(name: string, input: ToolInput): string {
+	if (name === CODEMODE) return scriptNote(scriptSource(input)) ?? "running a script";
+	switch (builtInTool(name)) {
+		case "read": return "reading";
+		case "grep":
+		case "find": return "searching";
+		case "ls": return "listing files";
+		case "edit": return "editing";
+		case "write": return "writing files";
+		case "bash":
+		case "powershell": return "running a command";
+		case undefined: return name;
+	}
 }
 
 export function readSpan(input: ToolInput): ReadSpan {

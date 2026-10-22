@@ -4,7 +4,7 @@ I built `pi-zen` because I wanted a minimal interface that made it easier to sta
 
 For real knowledge work, I like being an active participant. I want to understand what is happening between the AI and me so we can be good partners in making decisions. `pi-zen` gives me that space: clear responses, visible progress, and the useful parts of the session in a calm, visually appealing interface.
 
-`pi-zen` is a presentation extension for the [Pi](https://pi.dev) terminal interface. It removes visual clutter while preserving conversations, tool activity, reasoning, and session data. The terminal stays an open canvas: a sent turn is framed by small left corners with indented text, without a background fill, while replies and reasoning stay on the page without names or filled panels. It also adds compact tool summaries and diffs, a minimal editor rail, a quieter startup, a quiet loading mark that names the work in progress, and a live reading of where the current request's time is going, without changing tool execution or model prompts.
+`pi-zen` is a presentation extension for the [Pi](https://pi.dev) terminal interface. It removes visual clutter while preserving conversations, tool activity, reasoning, and session data. The terminal stays an open canvas: a bold left bar marks sent text, without corners or a background fill, while replies and reasoning stay on the page without names or filled panels. It also adds compact tool summaries and diffs, a minimal editor rail, a quieter startup, a quiet loading mark that names the work in progress, and a live reading of where the current request's time is going, without changing tool execution or model prompts.
 
 ## Showcase
 
@@ -26,7 +26,9 @@ Read the planner, edit the feeding rules, and run it. The GIF shows compact tool
 
 ## While a request runs
 
-While a request is in progress, a light travels a short bar above the editor and comes back. Beside it, a line names the current work. It reads `thinking` or `writing` when the model is the thing in motion, and names the tool when one is running, such as `read src/turn-status.ts`, `grep frameSent`, or `code fetch the logs`. Several tools at once are listed newest first.
+While a request is in progress, a light travels a short bar above the editor and comes back. Beside it, a quiet line names the current activity: `thinking`, `writing`, `reading`, `searching`, or `running a command`. Several reads at once share one label, such as `reading (3)`. A codemode script can supply its own purpose through its introductory comment. Intent, findings, and decisions stay in the model's own conversation; Zen never invents them from tool activity.
+
+Reasoning uses Pi's native rendering and `Ctrl+T` toggle, both while streaming and after a response. Zen leaves the full reasoning in the transcript. Tool rows use quieter ink to leave the conversation in the foreground. Long commands and multiline shell scripts keep a compact label, and a successful command with one short output line keeps that answer beside its duration. Failed commands surface a reported diagnostic before falling back to the first output line.
 
 A dim line above the editor says where the time is going and updates as the request runs:
 
@@ -35,6 +37,8 @@ A dim line above the editor says where the time is going and updates as the requ
 ```
 
 Thinking is the time the model spends reasoning, including the silence before it streams anything; writing is the time it spends producing text and tool calls. Time a tool spends running belongs to neither and is left out. The token counts follow Pi's footer: tokens sent, excluding cache reads and writes, and tokens produced, reasoning included. Both cover the whole request, however many turns it takes. A half of the work that took no measurable time is left out, so a model that does not stream its reasoning simply reads as writing. The final reading stays until the next request starts.
+
+Replies use Pi's native Markdown renderer, including syntax highlighting for every language its highlighter supports. Unknown or missing language tags stay plain. Zen hides the displayed code fences, leaving indented, highlighted code with breathing room around it. The Markdown itself stays intact, including blank lines, nested blocks, and incomplete fences during streaming. Colors and wrapping follow the active Pi theme and terminal width. Collapsed reasoning omits the repeated label; `Ctrl+T` still reveals it. `/zen off` restores Pi's fences and reasoning label.
 
 ## Expanded rows
 
@@ -66,7 +70,7 @@ Zen also quiets Pi's startup screen. If `quietStartup` is off in your global Pi 
 
 ## Development
 
-You will need Node.js 22.19 or newer and pnpm. Development dependencies target Pi 1.2.0; the extension still supports Pi 1.0.4 or newer. Clone the repository, install the dependencies, and start Pi with the local extension:
+You will need Node.js 22.19 or newer and pnpm. Development dependencies target Pi 1.4.0; the extension still supports Pi 1.0.4 or newer. Clone the repository, install the dependencies, and start Pi with the local extension:
 
 ```sh
 git clone https://github.com/Roshvan/pi-zen.git

@@ -109,7 +109,7 @@ export function formatToolRow(row: ToolRow, width: number, palette: RowPalette):
 	const failed = row.outcome.kind === "failed";
 	const marker = failed ? FAILED_MARKER : ROW_MARKER;
 	const verb = row.verb.padEnd(VERB_WIDTH, " ");
-	const head = palette.fg(failed ? "error" : "dim", marker) + " " + palette.fg("text", verb) + GAP;
+	const head = palette.fg(failed ? "error" : "dim", marker) + " " + palette.fg("dim", verb) + GAP;
 	const room = width - visibleWidth(`${marker} ${verb}${GAP}`);
 	if (room <= 0) return truncateToWidth(head, width, "");
 
@@ -119,5 +119,5 @@ export function formatToolRow(row: ToolRow, width: number, palette: RowPalette):
 	const subjectRoom = detail === undefined ? room : room - DETAIL_GAP.length - visibleWidth(detail.text);
 	const subject = elide(subjectText, row.subject?.elide ?? "end", subjectRoom);
 	const tail = detail === undefined ? "" : DETAIL_GAP + palette.fg(detail.color, detail.text);
-	return head + palette.fg(row.outcome.kind === "running" ? "dim" : "muted", subject) + tail;
+	return head + palette.fg(failed ? "muted" : "dim", subject) + tail;
 }
