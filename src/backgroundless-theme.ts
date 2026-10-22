@@ -62,6 +62,7 @@ export function liveTheme(): Theme | undefined {
 
 function backgroundlessForeground(color: ThemeColor): ThemeColor {
 	if (color === "userMessageText" || color === "customMessageText" || color === "toolOutput") return "text";
+	if (color === "thinkingText") return "muted";
 	return color;
 }
 

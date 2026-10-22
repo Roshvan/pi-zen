@@ -127,9 +127,14 @@ export function firstActionableLine(output: string): string | undefined {
 
 export function shortOutputLine(output: ToolOutput): string | undefined {
 	if (output.image || output.notice !== undefined) return undefined;
-	const lines = output.body.split("\n").map((line) => line.trim()).filter((line) => line !== "");
+	return shortAnswerLine(output.body, 72);
+}
+
+export function shortAnswerLine(body: string, maxWidth: number): string | undefined {
+	const lines = body.split("\n").map((line) => line.trim()).filter((line) => line !== "");
 	const first = lines.at(0);
-	return lines.length === 1 && first !== undefined && first !== "(no output)" && visibleWidth(first) <= 72 ? first : undefined;
+	return lines.length === 1 && first !== undefined && !["(no output)", "{}", "[]", "null", "undefined"].includes(first)
+		&& visibleWidth(first) <= maxWidth ? first : undefined;
 }
 
 function statusLabel(status: RegExpExecArray): string {

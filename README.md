@@ -28,7 +28,9 @@ Read the planner, edit the feeding rules, and run it. The GIF shows compact tool
 
 While a request is in progress, a light travels a short bar above the editor and comes back. Beside it, a quiet line names the current activity: `thinking`, `writing`, `reading`, `searching`, or `running a command`. Several reads at once share one label, such as `reading (3)`. A codemode script can supply its own purpose through its introductory comment. Intent, findings, and decisions stay in the model's own conversation; Zen never invents them from tool activity.
 
-Reasoning uses Pi's native rendering and `Ctrl+T` toggle, both while streaming and after a response. Zen leaves the full reasoning in the transcript. Tool rows use quieter ink to leave the conversation in the foreground. Long commands and multiline shell scripts keep a compact label, and a successful command with one short output line keeps that answer beside its duration. Failed commands surface a reported diagnostic before falling back to the first output line.
+Reasoning stays on one quiet line while work runs and after it completes, so internal narration does not push replies off the page. Click `Reasoning · click to reveal` to open that block; click its text to collapse it again. Opening one block leaves the others folded, and it stays open as more thinking streams in. Run `/zen details` to open all reasoning, including earlier messages, and `/zen on` to collapse it again. These commands also work from the keyboard. The complete reasoning remains in the session, and `/zen off` restores Pi's configured thinking visibility.
+
+Tool rows keep subjects readable while their markers and timings recede. Long commands and multiline shell scripts keep a compact label, and a successful command with one short output line keeps that answer beside its duration. Empty results such as `{}` add no summary text. Failed commands surface a reported diagnostic before falling back to the first output line.
 
 A dim line above the editor says where the time is going and updates as the request runs:
 
@@ -38,7 +40,7 @@ A dim line above the editor says where the time is going and updates as the requ
 
 Thinking is the time the model spends reasoning, including the silence before it streams anything; writing is the time it spends producing text and tool calls. Time a tool spends running belongs to neither and is left out. The token counts follow Pi's footer: tokens sent, excluding cache reads and writes, and tokens produced, reasoning included. Both cover the whole request, however many turns it takes. A half of the work that took no measurable time is left out, so a model that does not stream its reasoning simply reads as writing. The final reading stays until the next request starts.
 
-Replies use Pi's native Markdown renderer, including syntax highlighting for every language its highlighter supports. Unknown or missing language tags stay plain. Zen hides the displayed code fences, leaving indented, highlighted code with breathing room around it. The Markdown itself stays intact, including blank lines, nested blocks, and incomplete fences during streaming. Colors and wrapping follow the active Pi theme and terminal width. Collapsed reasoning omits the repeated label; `Ctrl+T` still reveals it. `/zen off` restores Pi's fences and reasoning label.
+Replies use Pi's native Markdown renderer, including syntax highlighting for every language its highlighter supports. Unknown or missing language tags stay plain. Zen hides the displayed code fences, leaving indented, highlighted code with breathing room around it. The Markdown itself stays intact, including blank lines, nested blocks, and incomplete fences during streaming. Colors and wrapping follow the active Pi theme and terminal width. Revealed reasoning uses the same Markdown renderer. `/zen off` restores Pi's fences and reasoning label.
 
 ## Expanded rows
 
@@ -64,7 +66,7 @@ Install the extension from npm:
 pi install npm:pi-zen
 ```
 
-You can also install the latest version directly from GitHub with `pi install git:github.com/Roshvan/pi-zen`. Start Pi as usual; Zen is on. Run `/zen` to toggle it, or `/zen on` and `/zen off` to choose; the choice holds across `/new`, `/resume`, and `/reload` until Pi exits. Tool rows drawn while Zen is off keep Pi's own frame, and `/reload` redraws earlier rows in the current look.
+You can also install the latest version directly from GitHub with `pi install git:github.com/Roshvan/pi-zen`. Start Pi as usual; Zen is on. Run `/zen` to toggle it, `/zen on` and `/zen off` to choose, or `/zen details` for full reasoning; the choice holds across `/new`, `/resume`, and `/reload` until Pi exits. Switching the view redraws earlier reasoning immediately. Tool rows drawn while Zen is off keep Pi's own frame, and `/reload` redraws earlier rows in the current look.
 
 Zen also quiets Pi's startup screen. If `quietStartup` is off in your global Pi settings, Zen turns it on, says so once, and records in `pi-zen.json`, next to those settings, that the change was its own; `/zen off` turns it back off, even after a restart. Zen never touches a project's `quietStartup`, and if you turn the global one off again yourself, it stays off. Zen follows the active theme, including one picked with `/settings`, and gives its colors back when it is switched off.
 

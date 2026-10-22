@@ -3,7 +3,7 @@ import type { AutocompleteItem } from "@earendil-works/pi-tui";
 
 import type { QuietingOutcome, RestoringOutcome, StartupFailure } from "./startup-quieting.ts";
 
-type Look = "zen" | "pi";
+type Look = "zen" | "zen-details" | "pi";
 
 type ZenCommand = { readonly _tag: "Toggle" } | { readonly _tag: "Choose"; readonly look: Look };
 
@@ -30,9 +30,10 @@ declare global {
 const CHOICES: ReadonlyMap<string, Look> = new Map([
 	["on", "zen"],
 	["off", "pi"],
+	["details", "zen-details"],
 ]);
 
-export const USAGE_NOTICE: Notice = { text: "Usage: /zen [on|off]", level: "warning" };
+export const USAGE_NOTICE: Notice = { text: "Usage: /zen [on|off|details]", level: "warning" };
 
 export const ON_OUTSIDE_TUI: Notice = { text: "Zen on · it shows in Pi's interactive terminal", level: "info" };
 
@@ -52,7 +53,7 @@ export function zenCompletions(prefix: string): AutocompleteItem[] {
 function lookAfter(command: ZenCommand, current: Look): Look {
 	switch (command._tag) {
 		case "Toggle":
-			return current === "zen" ? "pi" : "zen";
+			return current === "pi" ? "zen" : "pi";
 		case "Choose":
 			return command.look;
 	}

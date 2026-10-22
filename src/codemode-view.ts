@@ -29,7 +29,7 @@ import {
 	type ToolInput,
 	toolInput,
 } from "./tool-calls.ts";
-import { firstActionableLine, toolOutput } from "./tool-results.ts";
+import { firstActionableLine, shortAnswerLine, toolOutput } from "./tool-results.ts";
 import {
 	attention,
 	formatDuration,
@@ -259,8 +259,8 @@ function scriptFailure(output: readonly string[]): string | undefined {
 }
 
 function answerOf(output: readonly string[], callCount: number, elapsedMs: number | undefined): Answer {
-	const only = output.length === 1 ? output[0]?.trim() : undefined;
-	if (only !== undefined && only.length <= SHORT_ANSWER) return { kind: "echo", line: only };
+	const only = shortAnswerLine(output.join("\n"), SHORT_ANSWER);
+	if (only !== undefined) return { kind: "echo", line: only };
 
 	const duration = elapsedMs === undefined ? undefined : formatDuration(elapsedMs);
 	if (callCount > 0) {
