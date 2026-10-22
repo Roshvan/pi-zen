@@ -45,7 +45,7 @@ export function createZenLifecycle({ zenSwitch, history, startup, parts }: ZenLi
 
 	return {
 		sessionStarted: async (reason, host) => {
-			if (host.mode !== "tui" || zenSwitch.look() !== "zen") return;
+			if (host.mode !== "tui" || zenSwitch.look() === "pi") return;
 			const notice = startupNotice(await enter(host, reason));
 			if (notice !== undefined) announce(host.ui, notice);
 		},
@@ -64,7 +64,10 @@ export function createZenLifecycle({ zenSwitch, history, startup, parts }: ZenLi
 				announce(host.ui, ON_OUTSIDE_TUI);
 				return;
 			}
-			announce(host.ui, onNotice(await enter(host, "zen on")));
+			const notice = onNotice(await enter(host, "zen on"));
+			announce(host.ui, zenSwitch.look() === "zen-details" && notice.level === "info"
+				? { text: "Zen details · full reasoning · /zen on to collapse", level: "info" }
+				: notice);
 		},
 	};
 }

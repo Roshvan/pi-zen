@@ -1,9 +1,10 @@
-import { type ExtensionAPI, getAgentDir } from "@earendil-works/pi-coding-agent";
+import { type ExtensionAPI, getAgentDir, SettingsManager } from "@earendil-works/pi-coding-agent";
 
 import { liveSentInk } from "../src/backgroundless-theme.ts";
 import { createCallRuns } from "../src/call-group.ts";
 import { orientMessage } from "../src/message-orientation.ts";
 import { carriedPromptHistory } from "../src/prompt-history.ts";
+import { createReasoningView } from "../src/reasoning-view.ts";
 import { silentHeader } from "../src/silent-header.ts";
 import { createStartupQuieting } from "../src/startup-quieting.ts";
 import { createThemeFollow } from "../src/theme-follow.ts";
@@ -23,17 +24,25 @@ export default function zen(pi: ExtensionAPI): void {
 	const turnStatus = createTurnStatus(Date.now);
 	const workStatus = createWorkStatus();
 	const themeFollow = createThemeFollow();
+	let cwd = process.cwd();
+	const reasoningView = createReasoningView({
+		expanded: () => zenSwitch.look() === "zen-details",
+		nativeHidden: () => SettingsManager.create(cwd, getAgentDir()).getHideThinkingBlock(),
+	});
 	const lifecycle = createZenLifecycle({
 		zenSwitch,
 		history,
 		startup: createStartupQuieting(getAgentDir()),
-		parts: [silentHeader, zenEditorPart(history), turnStatus, workStatus, themeFollow],
+		parts: [silentHeader, zenEditorPart(history), turnStatus, workStatus, themeFollow, reasoningView],
 	});
-	const showsZen = (): boolean => zenSwitch.look() === "zen";
+	const showsZen = (): boolean => zenSwitch.look() !== "pi";
 
 	registerToolViews(pi, runs, showsZen, Date.now);
 
-	pi.on("session_start", (event, ctx) => lifecycle.sessionStarted(event.reason, ctx));
+	pi.on("session_start", (event, ctx) => {
+		cwd = ctx.cwd;
+		return lifecycle.sessionStarted(event.reason, ctx);
+	});
 
 	pi.on("session_shutdown", () => {
 		lifecycle.sessionEnded();
@@ -91,7 +100,7 @@ export default function zen(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("zen", {
-		description: "Quiet the TUI: on or off",
+		description: "Quiet the TUI: on, off, or details for full reasoning",
 		getArgumentCompletions: zenCompletions,
 		handler: lifecycle.command,
 	});
