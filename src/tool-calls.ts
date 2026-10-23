@@ -21,6 +21,22 @@ export type ToolInput = Reported<
 
 export const CODEMODE = "codemode";
 
+export function mcpToolName(name: string): string | undefined {
+	if (name === "list_mcp_resources" || name === "list_mcp_resource_templates" || name === "read_mcp_resource") return name;
+	const match = /^mcp__([\w-]+?)__(.+)$/.exec(name);
+	const server = match?.[1];
+	const tool = match?.[2];
+	return server === undefined || tool === undefined ? undefined : `${server}/${tool}`;
+}
+
+export function displayToolName(name: string): string {
+	return mcpToolName(name) ?? name;
+}
+
+export function hasZenToolView(name: string): boolean {
+	return name === CODEMODE || builtInTool(name) !== undefined || mcpToolName(name) !== undefined;
+}
+
 export type BuiltInTool = "read" | "edit" | "write" | "bash" | "powershell" | "grep" | "find" | "ls";
 
 export type CallHeading = {
@@ -102,11 +118,11 @@ const BUILT_INS = {
 	read: { verb: "read", subject: pathSubject },
 	edit: { verb: "edit", subject: pathSubject },
 	write: { verb: "write", subject: pathSubject },
-	bash: { verb: "run", subject: commandSubject },
-	powershell: { verb: "run", subject: commandSubject },
+	bash: { verb: "bash", subject: commandSubject },
+	powershell: { verb: "powershell", subject: commandSubject },
 	grep: { verb: "grep", subject: patternSubject },
 	find: { verb: "find", subject: patternSubject },
-	ls: { verb: "list", subject: listSubject },
+	ls: { verb: "ls", subject: listSubject },
 } satisfies { readonly [Tool in BuiltInTool]: BuiltIn };
 
 function isBuiltInTool(name: string): name is BuiltInTool {
@@ -125,7 +141,9 @@ export function headingOf(tool: BuiltInTool, input: ToolInput, cwd: string): Cal
 function callHeading(name: string, input: ToolInput, cwd: string): CallHeading {
 	const tool = builtInTool(name);
 	if (tool !== undefined) return headingOf(tool, input, cwd);
-	if (name === CODEMODE) return { verb: "code", subject: noteSubject(input, cwd) };
+	if (name === CODEMODE) return { verb: CODEMODE, subject: noteSubject(input, cwd) };
+	const mcp = mcpToolName(name);
+	if (mcp !== undefined) return { verb: "mcp", subject: { text: mcp, elide: "end" } };
 	return {
 		verb: name,
 		subject: pathSubject(input, cwd) ?? patternSubject(input, cwd) ?? commandSubject(input, cwd),
@@ -151,7 +169,7 @@ export function workLabel(name: string, input: ToolInput): string {
 		case "write": return "writing files";
 		case "bash":
 		case "powershell": return "running a command";
-		case undefined: return name;
+		case undefined: return displayToolName(name);
 	}
 }
 

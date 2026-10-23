@@ -64,10 +64,7 @@ export function createZenLifecycle({ zenSwitch, history, startup, parts }: ZenLi
 				announce(host.ui, ON_OUTSIDE_TUI);
 				return;
 			}
-			const notice = onNotice(await enter(host, "zen on"));
-			announce(host.ui, zenSwitch.look() === "zen-details" && notice.level === "info"
-				? { text: "Zen details · full reasoning · /zen on to collapse", level: "info" }
-				: notice);
+			announce(host.ui, onNotice(await enter(host, "zen on")));
 		},
 	};
 }

@@ -23,7 +23,9 @@ import { sourceLayout } from "./source-view.ts";
 import {
 	builtInTool,
 	type CallHeading,
+	displayToolName,
 	headingOf,
+	mcpToolName,
 	labelToolCall,
 	scriptSource,
 	type ToolInput,
@@ -81,7 +83,7 @@ type ShownResult = {
 	readonly output: readonly string[];
 };
 
-type Layout = "row" | "detailed" | "steps";
+type Layout = "row" | "detailed" | "steps" | "failures";
 
 const HEADER = /^Script (?:completed|failed)\nWall time [\d.]+ seconds\nOutput:\n/;
 const SCRIPT_ERROR = "Script error:";
@@ -105,8 +107,9 @@ export function codemodeRenderers(pi: ToolRenderers | undefined, showsZen: () =>
 			if (!showsZen()) return piResult(pi, result, options, theme, context) ?? nothing();
 			const code = scriptSource(toolInput(context.args));
 			if (options.isPartial) {
-				if (!context.expanded) return nothing();
-				return scriptView(scriptRun(code, { kind: "running", result }, context.cwd), "steps", theme);
+				const run = scriptRun(code, { kind: "running", result }, context.cwd);
+				if (context.expanded) return scriptView(run, "steps", theme);
+				return codemodeFailures(result) > 0 ? scriptView(run, "failures", theme) : nothing();
 			}
 			const memory = rowMemory(context);
 			settleClock(memory, now);
@@ -132,9 +135,10 @@ function scriptLines(run: ScriptRun, layout: Layout, source: Component | undefin
 	if (layout === "row" || room <= 0) return head;
 
 	const code = source?.render(width) ?? [];
+	const steps = layout === "failures" ? run.steps.filter((step) => step.outcome.kind === "failed") : run.steps;
 	return [
 		...head,
-		...run.steps.map((step) => INDENT + stepLine(step, room, theme)),
+		...steps.map((step) => INDENT + stepLine(step, room, theme)),
 		...(code.length > 0 ? ["", ...code] : []),
 		...run.output.map((line) => INDENT + theme.fg("dim", truncateToWidth(line, room, ELLIPSIS))),
 	];
@@ -142,7 +146,7 @@ function scriptLines(run: ScriptRun, layout: Layout, source: Component | undefin
 
 function scriptView(run: ScriptRun, layout: Layout, theme: Theme): Component {
 	const source =
-		layout !== "row" && run.source !== undefined
+		(layout === "detailed" || layout === "steps") && run.source !== undefined
 			? sourceLayout({ path: "script.js", text: run.source, startLine: 1 }, theme)
 			: undefined;
 	return widthCached((width) => scriptLines(run, layout, source, theme, width), source === undefined ? [] : [source]);
@@ -160,8 +164,8 @@ function scriptRun(code: string, progress: Progress, cwd: string): ScriptRun {
 	const shown = shownResult(progress, output, steps);
 	return {
 		row: {
-			verb: "run",
-			subject: { text: script.note ?? "script", elide: "end" },
+			verb: "codemode",
+			subject: { text: script.note ?? nestedToolNames(code, records), elide: "end" },
 			outcome: shown.outcome,
 		},
 		steps,
@@ -173,8 +177,14 @@ function scriptRun(code: string, progress: Progress, cwd: string): ScriptRun {
 function shownResult(progress: Progress, output: readonly string[], steps: readonly Step[]): ShownResult {
 	switch (progress.kind) {
 		case "writing":
-		case "running":
 			return { outcome: RUNNING, output: clippedOutput(output) };
+		case "running": {
+			const failed = steps.filter((step) => step.outcome.kind === "failed").length;
+			return {
+				outcome: failed > 0 ? settled(attention(`${failed} failed · running`)) : RUNNING,
+				output: clippedOutput(output),
+			};
+		}
 		case "failed":
 			return { outcome: { kind: "failed", reason: scriptFailure(output) }, output: clippedOutput(output) };
 		case "succeeded": {
@@ -193,6 +203,22 @@ function shownResult(progress: Progress, output: readonly string[], steps: reado
 			};
 		}
 	}
+}
+
+export function codemodeFailures(result: RenderedResult): number {
+	return reportedCalls(result.details).filter((call) => call.status === "error" || call.status === "cancelled").length;
+}
+
+function nestedToolNames(code: string, records: readonly ReportedCall[]): string {
+	const names = records.length > 0
+		? records.map((record) => record.name).filter(isString)
+		: parseCodemodeScript(code).calls.map((call) => call.name);
+	const counts = new Map<string, number>();
+	for (const name of names) {
+		const label = displayToolName(name);
+		counts.set(label, (counts.get(label) ?? 0) + 1);
+	}
+	return [...counts].map(([name, count]) => count === 1 ? name : `${name} ×${count}`).join(", ") || "script";
 }
 
 function isPresent(call: ReportedCall | null | undefined): call is ReportedCall {
@@ -219,6 +245,8 @@ function jsonInput(text: string): ToolInput {
 function stepHeading(name: string, input: ToolInput, cwd: string): CallHeading {
 	const tool = builtInTool(name);
 	if (tool !== undefined) return headingOf(tool, input, cwd);
+	const mcp = mcpToolName(name);
+	if (mcp !== undefined) return { verb: "mcp", subject: { text: mcp, elide: "end" } };
 	return { verb: "call", subject: { text: labelToolCall(name, input, cwd), elide: "end" } };
 }
 

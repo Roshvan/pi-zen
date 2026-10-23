@@ -1,4 +1,4 @@
-import { type ExtensionAPI, getAgentDir, SettingsManager } from "@earendil-works/pi-coding-agent";
+import { type ExtensionAPI, type ExtensionContext, getAgentDir, sessionEntryToContextMessages, SettingsManager } from "@earendil-works/pi-coding-agent";
 
 import { liveSentInk } from "../src/backgroundless-theme.ts";
 import { createCallRuns } from "../src/call-group.ts";
@@ -8,7 +8,7 @@ import { createReasoningView } from "../src/reasoning-view.ts";
 import { silentHeader } from "../src/silent-header.ts";
 import { createStartupQuieting } from "../src/startup-quieting.ts";
 import { createThemeFollow } from "../src/theme-follow.ts";
-import { toolInput, workLabel } from "../src/tool-calls.ts";
+import { hasZenToolView, toolInput, workLabel } from "../src/tool-calls.ts";
 import { registerToolViews } from "../src/tool-views.ts";
 import { createTurnStatus } from "../src/turn-status.ts";
 import { phaseFromContent } from "../src/turn-timing.ts";
@@ -19,14 +19,17 @@ import { carriedSwitch, zenCompletions } from "../src/zen-switch.ts";
 
 export default function zen(pi: ExtensionAPI): void {
 	const zenSwitch = carriedSwitch();
-	const runs = createCallRuns();
+	let sessionManager: ExtensionContext["sessionManager"] | undefined;
+	const runs = createCallRuns(() => {
+		if (sessionManager !== undefined) seedRuns(sessionManager);
+	});
 	const history = carriedPromptHistory();
 	const turnStatus = createTurnStatus(Date.now);
 	const workStatus = createWorkStatus();
 	const themeFollow = createThemeFollow();
 	let cwd = process.cwd();
+	let hasSpoken = false;
 	const reasoningView = createReasoningView({
-		expanded: () => zenSwitch.look() === "zen-details",
 		nativeHidden: () => SettingsManager.create(cwd, getAgentDir()).getHideThinkingBlock(),
 	});
 	const lifecycle = createZenLifecycle({
@@ -39,10 +42,35 @@ export default function zen(pi: ExtensionAPI): void {
 
 	registerToolViews(pi, runs, showsZen, Date.now);
 
+	const seedRuns = (manager: ExtensionContext["sessionManager"]): void => {
+		runs.reset();
+		for (const entry of manager.buildContextEntries()) {
+			for (const message of sessionEntryToContextMessages(entry)) {
+				if (message.role !== "assistant") {
+					if (message.role !== "toolResult") runs.close();
+					continue;
+				}
+				for (const block of message.content) {
+					if (block.type === "text" && block.text.trim() !== "") runs.close();
+					if (block.type === "toolCall") {
+						if (hasZenToolView(block.name)) runs.join(block.id, block.name);
+						else runs.close();
+					}
+				}
+			}
+		}
+		runs.close();
+	};
+
 	pi.on("session_start", (event, ctx) => {
 		cwd = ctx.cwd;
+		sessionManager = ctx.sessionManager;
+		seedRuns(ctx.sessionManager);
 		return lifecycle.sessionStarted(event.reason, ctx);
 	});
+
+	pi.on("session_tree", (_event, ctx) => seedRuns(ctx.sessionManager));
+	pi.on("session_compact", (_event, ctx) => seedRuns(ctx.sessionManager));
 
 	pi.on("session_shutdown", () => {
 		lifecycle.sessionEnded();
@@ -59,11 +87,19 @@ export default function zen(pi: ExtensionAPI): void {
 	});
 
 	pi.on("message_start", (event) => {
-		if (event.message.role === "assistant") turnStatus.open();
+		if (event.message.role === "user") runs.close();
+		if (event.message.role === "assistant") {
+			hasSpoken = false;
+			turnStatus.open();
+		}
 	});
 
 	pi.on("message_update", (event) => {
 		if (event.message.role !== "assistant") return;
+		if (!hasSpoken && event.message.content.some((block) => block.type === "text" && block.text.trim() !== "")) {
+			hasSpoken = true;
+			runs.close();
+		}
 		const phase = phaseFromContent(event.message.content);
 		if (phase === undefined) return;
 		turnStatus.produce(phase, event.message.usage);
@@ -84,10 +120,6 @@ export default function zen(pi: ExtensionAPI): void {
 		workStatus.toolEnded(event.toolCallId);
 	});
 
-	pi.on("turn_end", () => {
-		runs.close();
-	});
-
 	pi.on("agent_end", () => {
 		turnStatus.end();
 		workStatus.end();
@@ -100,7 +132,7 @@ export default function zen(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("zen", {
-		description: "Quiet the TUI: on, off, or details for full reasoning",
+		description: "Quiet the TUI: on, off, or details (alias for on)",
 		getArgumentCompletions: zenCompletions,
 		handler: lifecycle.command,
 	});
