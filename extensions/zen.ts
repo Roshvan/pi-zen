@@ -12,6 +12,7 @@ import { hasZenToolView, toolInput, workLabel } from "../src/tool-calls.ts";
 import { registerToolViews } from "../src/tool-views.ts";
 import { createTurnStatus } from "../src/turn-status.ts";
 import { phaseFromContent } from "../src/turn-timing.ts";
+import { activityFromUpdate } from "../src/work-activity.ts";
 import { createWorkStatus } from "../src/work-status.ts";
 import { zenEditorPart } from "../src/zen-editor.ts";
 import { createZenLifecycle } from "../src/zen-lifecycle.ts";
@@ -25,7 +26,7 @@ export default function zen(pi: ExtensionAPI): void {
 	});
 	const history = carriedPromptHistory();
 	const turnStatus = createTurnStatus(Date.now);
-	const workStatus = createWorkStatus();
+	const workStatus = createWorkStatus(Date.now);
 	const themeFollow = createThemeFollow();
 	let cwd = process.cwd();
 	let hasSpoken = false;
@@ -73,6 +74,7 @@ export default function zen(pi: ExtensionAPI): void {
 	pi.on("session_compact", (_event, ctx) => seedRuns(ctx.sessionManager));
 
 	pi.on("session_shutdown", () => {
+		workStatus.end();
 		lifecycle.sessionEnded();
 	});
 
@@ -83,6 +85,8 @@ export default function zen(pi: ExtensionAPI): void {
 	});
 
 	pi.on("turn_start", () => {
+		turnStatus.open();
+		workStatus.model("waiting");
 		themeFollow.sync();
 	});
 
@@ -90,7 +94,6 @@ export default function zen(pi: ExtensionAPI): void {
 		if (event.message.role === "user") runs.close();
 		if (event.message.role === "assistant") {
 			hasSpoken = false;
-			turnStatus.open();
 		}
 	});
 
@@ -100,16 +103,17 @@ export default function zen(pi: ExtensionAPI): void {
 			hasSpoken = true;
 			runs.close();
 		}
+		const activity = activityFromUpdate(event.assistantMessageEvent);
+		if (activity !== undefined) workStatus.model(activity);
 		const phase = phaseFromContent(event.message.content);
 		if (phase === undefined) return;
 		turnStatus.produce(phase, event.message.usage);
-		workStatus.phase(phase);
 	});
 
 	pi.on("message_end", (event) => {
 		if (event.message.role !== "assistant") return;
 		turnStatus.commit(event.message.usage);
-		workStatus.phase("thinking");
+		workStatus.model("waiting");
 	});
 
 	pi.on("tool_execution_start", (event) => {

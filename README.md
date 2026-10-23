@@ -26,7 +26,9 @@ Read the planner, edit the feeding rules, and run it. The GIF shows compact tool
 
 ## While a request runs
 
-While a request is in progress, a light travels a short bar above the editor and comes back. Beside it, a quiet line names the current activity: `thinking`, `writing`, `reading`, `searching`, or `running a command`. Several reads at once share one label, such as `reading (3)`. A codemode script can supply its own purpose through its introductory comment. Intent, findings, and decisions stay in the model's own conversation; Zen never invents them from tool activity.
+While a request is in progress, a light travels a short bar above the editor and comes back. Beside it, a quiet line names the current activity: `waiting for response`, `reasoning`, `writing`, `reading`, `searching`, or `running a command`. Several reads at once share one label, such as `reading (3)`. A codemode script can supply its own purpose through its introductory comment. Intent, findings, and decisions stay in the model's own conversation; Zen never invents them from tool activity.
+
+Reasoning events with redacted text or a completed empty reasoning block read `reasoning · text unavailable`; Zen cannot reveal text the provider does not send. After 10 seconds without a model content update, the line reads `waiting for response · no model output for 10s`, with the silence counter updating each second. This reports silence, not a diagnosis that the request is stuck. Running tools keep their own activity labels and do not trigger this notice. Text, readable reasoning, and tool updates still stream through Pi's native rendering as they arrive; this status line does not buffer them.
 
 Reasoning stays visible by default in Zen mode, using Pi's native rendering, without a separate reveal prompt. Pi's thinking toggle and per-block clicks still work; an explicit visibility choice carries forward to new messages. `/zen details` remains an alias for `/zen on`; repeating either command preserves native visibility choices. `/zen off` restores Pi's configured thinking visibility. Consecutive tools share one expandable activity block, even across reasoning turns. Assistant text and user messages start a new group. The summary names the actual tools and keeps failures and currently running tools visible. Failed rows stay visible under the collapsed group, including nested failures while a codemode script is still running. Direct MCP calls join the same group and use `server/tool` names; expanding a row reveals its arguments and output.
 
@@ -35,10 +37,10 @@ Tool rows keep subjects readable while their markers and timings recede. Long co
 A dim line above the editor says where the time is going and updates as the request runs:
 
 ```text
-7.2s thinking · 3.6s writing · ↑6.5k ↓5.8k
+7.2s reasoning / waiting · 3.6s writing · ↑6.5k ↓5.8k
 ```
 
-Thinking is the time the model spends reasoning, including the silence before it streams anything; writing is the time it spends producing text and tool calls. Time a tool spends running belongs to neither and is left out. The token counts follow Pi's footer: tokens sent, excluding cache reads and writes, and tokens produced, reasoning included. Both cover the whole request, however many turns it takes. A half of the work that took no measurable time is left out, so a model that does not stream its reasoning simply reads as writing. The final reading stays until the next request starts.
+Reasoning / waiting combines time in reasoning blocks with the wait before model output; it is not proof that the model is actively reasoning throughout. Writing covers time in text and tool-call blocks, including gaps between updates. Time a tool spends running belongs to neither and is left out. The token counts follow Pi's footer: tokens sent, excluding cache reads and writes, and tokens produced, reasoning included. Both cover the whole request, however many turns it takes. Phases too short to read are omitted. Waiting starts at Pi's turn boundary and stays in reasoning / waiting even when the response contains no reasoning blocks. The final reading stays until the next request starts.
 
 Replies use Pi's native Markdown renderer, including syntax highlighting for every language its highlighter supports. Unknown or missing language tags stay plain. Zen hides the displayed code fences, leaving indented, highlighted code with breathing room around it. The Markdown itself stays intact, including blank lines, nested blocks, and incomplete fences during streaming. Colors and wrapping follow the active Pi theme and terminal width. Reasoning uses the same Markdown renderer. `/zen off` restores Pi's fences and configured reasoning visibility.
 
