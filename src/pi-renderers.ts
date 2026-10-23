@@ -1,8 +1,6 @@
 import type { Theme, ToolRenderers, ToolRenderResultOptions } from "@earendil-works/pi-coding-agent";
 import { type Component, Container } from "@earendil-works/pi-tui";
 
-import type { RunSeat } from "./call-group.ts";
-
 type CallSlot = NonNullable<ToolRenderers["renderCall"]>;
 type ResultSlot = NonNullable<ToolRenderers["renderResult"]>;
 
@@ -11,8 +9,8 @@ export type RenderContext = Parameters<CallSlot>[2];
 export type RenderedResult = Parameters<ResultSlot>[0];
 
 type RowMemory = {
+	groupOwner?: symbol | undefined;
 	expanded?: boolean | undefined;
-	seat?: RunSeat | undefined;
 	startedAt?: number | undefined;
 	endedAt?: number | undefined;
 	interval?: ReturnType<typeof setInterval> | undefined;

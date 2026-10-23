@@ -4,7 +4,6 @@ import { type Component, Container, type TUI } from "@earendil-works/pi-tui";
 import type { UiPart } from "./ui-claim.ts";
 
 type ReasoningPreferences = {
-	readonly expanded: () => boolean;
 	readonly nativeHidden: () => boolean;
 };
 
@@ -22,8 +21,13 @@ function assistantMessages(children: readonly Component[]): readonly AssistantMe
 	});
 }
 
-function mountReasoning(tui: TUI, hidden: boolean): ReasoningMount {
-	const configured = new WeakSet<AssistantMessageComponent>();
+function mountReasoning(tui: TUI, nativeHidden: () => boolean): ReasoningMount {
+	const configured = new WeakMap<AssistantMessageComponent, {
+		readonly original: AssistantMessageComponent["setHideThinkingBlock"];
+		readonly observed: AssistantMessageComponent["setHideThinkingBlock"];
+	}>();
+	let hidden = false;
+	let previousNative = nativeHidden();
 	const previousRender = tui.requestRender;
 	let active = true;
 
@@ -31,8 +35,17 @@ function mountReasoning(tui: TUI, hidden: boolean): ReasoningMount {
 		if (active) {
 			for (const message of assistantMessages(tui.children)) {
 				if (configured.has(message)) continue;
-				configured.add(message);
-				message.setHideThinkingBlock(hidden);
+				const currentNative = nativeHidden();
+				if (currentNative !== previousNative) hidden = currentNative;
+				previousNative = currentNative;
+				const original = message.setHideThinkingBlock;
+				const observed: AssistantMessageComponent["setHideThinkingBlock"] = (hide) => {
+					hidden = hide;
+					original.call(message, hide);
+				};
+				configured.set(message, { original, observed });
+				original.call(message, hidden);
+				message.setHideThinkingBlock = observed;
 			}
 		}
 		previousRender.call(tui, force);
@@ -41,6 +54,10 @@ function mountReasoning(tui: TUI, hidden: boolean): ReasoningMount {
 	const dispose = (): void => {
 		active = false;
 		if (tui.requestRender === requestRender) tui.requestRender = previousRender;
+		for (const message of assistantMessages(tui.children)) {
+			const setter = configured.get(message);
+			if (setter !== undefined && message.setHideThinkingBlock === setter.observed) message.setHideThinkingBlock = setter.original;
+		}
 	};
 
 	tui.requestRender = requestRender;
@@ -60,9 +77,9 @@ export function createReasoningView(preferences: ReasoningPreferences): UiPart {
 	let mounted: ReasoningMount | undefined;
 	return {
 		show: (ui) => {
-			ui.setHiddenThinkingLabel("Reasoning · click to reveal");
+			if (mounted !== undefined) return;
 			ui.setWidget(WIDGET_KEY, (tui) => {
-				const mount = mountReasoning(tui, !preferences.expanded());
+				const mount = mountReasoning(tui, preferences.nativeHidden);
 				mounted = mount;
 				return {
 					render: () => [],
@@ -77,7 +94,6 @@ export function createReasoningView(preferences: ReasoningPreferences): UiPart {
 		hide: (ui) => {
 			mounted?.restore(preferences.nativeHidden());
 			ui.setWidget(WIDGET_KEY, undefined);
-			ui.setHiddenThinkingLabel();
 		},
 	};
 }

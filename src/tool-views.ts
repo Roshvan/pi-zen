@@ -7,17 +7,10 @@ import {
 import { Box, type Component, Container, Text } from "@earendil-works/pi-tui";
 
 import { quietLiveTheme, renderPalette } from "./backgroundless-theme.ts";
-import {
-	type CallRuns,
-	formatGroupLine,
-	type GroupLabel,
-	groupKey,
-	OWN_SEAT,
-	type RunLine,
-	type RunSeat,
-} from "./call-group.ts";
-import { codemodeRenderers } from "./codemode-view.ts";
+import { type CallRuns, groupedRenderers } from "./call-group.ts";
+import { codemodeFailures, codemodeRenderers } from "./codemode-view.ts";
 import { diffLayout, type EditDiff, editDiff, editSummary } from "./edit-diff.ts";
+import { mcpRenderers } from "./mcp-view.ts";
 import {
 	type Clock,
 	elapsedOf,
@@ -38,6 +31,7 @@ import {
 	type BuiltInTool,
 	CODEMODE,
 	headingOf,
+	mcpToolName,
 	readSpan,
 	type ReadSpan,
 	type ToolInput,
@@ -116,52 +110,20 @@ type Preview<Call> = {
 	readonly text: (settled: Settled<Call>) => PreviewText | undefined;
 };
 
-type RunRole = GroupLabel | "interrupts";
-
 type ViewSpec<Call> = {
-	readonly run: RunRole;
 	readonly call: (input: ToolInput) => Call;
 	readonly detail: (settled: Settled<Call>) => RowDetail | undefined;
 	readonly failure: (output: ToolOutput) => string | undefined;
 	readonly preview: Preview<Call> | undefined;
 };
 
-type ToolView = (pi: ToolRenderers | undefined, runs: CallRuns, showsZen: () => boolean, now: Clock) => ToolRenderers;
+type ToolView = (pi: ToolRenderers | undefined, showsZen: () => boolean, now: Clock) => ToolRenderers;
 
-type GroupLines = {
-	readonly key: string;
-	readonly width: number;
-	readonly lines: string[];
-};
-
-function rowComponent(row: ToolRow, diff: Component | undefined, line: () => RunLine, palette: RowPalette): Component {
-	const own = widthCached((width) => {
+function rowComponent(row: ToolRow, diff: Component | undefined, palette: RowPalette): Component {
+	return widthCached((width) => {
 		const head = formatToolRow(row, width, palette);
 		return diff === undefined ? [head] : [head, ...diff.render(width)];
 	}, diff === undefined ? [] : [diff]);
-	let group: GroupLines | undefined;
-	return {
-		invalidate: () => {
-			own.invalidate();
-			group = undefined;
-		},
-		render: (width) => {
-			const shown = line();
-			switch (shown.kind) {
-				case "hidden":
-					return [];
-				case "own row":
-					return own.render(width);
-				case "group": {
-					const key = groupKey(shown.counts);
-					if (group?.key !== key || group.width !== width) {
-						group = { key, width, lines: [formatGroupLine(shown.counts, width, palette)] };
-					}
-					return group.lines;
-				}
-			}
-		},
-	};
 }
 
 function streamingTail(output: ToolOutput, theme: Theme): Component {
@@ -186,17 +148,6 @@ function boxed(component: Component): Component {
 	return box;
 }
 
-function seatOf(run: RunRole, runs: CallRuns, context: RenderContext): RunSeat {
-	const memory = rowMemory(context);
-	memory.seat ??= run === "interrupts" ? runs.interrupt() : runs.join(() => memory.expanded === true);
-	return memory.seat;
-}
-
-function takeSeat(run: RunRole, seat: RunSeat, outcome: RowOutcome): void {
-	if (outcome.kind === "failed") seat.stepApart();
-	else if (run !== "interrupts") seat.fold(run);
-}
-
 function settledOf<Call>(call: Call, result: RenderedResult, context: RenderContext): Settled<Call> {
 	const details = toolDetails(result.details);
 	const patch = reportedPatch(details);
@@ -215,7 +166,7 @@ function outputBody(output: ToolOutput, theme: Theme): Component {
 }
 
 function viewRenderers<Call>(tool: BuiltInTool, spec: ViewSpec<Call>): ToolView {
-	return (pi, runs, showsZen, now) => {
+	return (pi, showsZen, now) => {
 		const results = new WeakMap<object, CachedResult<Call>>();
 		const expandedResult = (
 			row: ToolRow,
@@ -225,9 +176,9 @@ function viewRenderers<Call>(tool: BuiltInTool, spec: ViewSpec<Call>): ToolView 
 			input: ToolInput,
 		): Component => {
 			if (tool === "edit" && row.outcome.kind !== "failed" && shown.diff !== undefined) {
-				return rowComponent(row, diffLayout(shown.diff, readSpan(input).path, theme), OWN_SEAT.line, theme);
+				return rowComponent(row, diffLayout(shown.diff, readSpan(input).path, theme), theme);
 			}
-			const head = rowComponent(row, undefined, OWN_SEAT.line, theme);
+			const head = rowComponent(row, undefined, theme);
 			if (tool === "bash" || tool === "powershell") {
 				const command = isString(input.command) ? input.command : "";
 				const source = sourceLayout({ path: tool === "bash" ? "command.sh" : "command.ps1", text: command, startLine: 1 }, theme);
@@ -245,7 +196,7 @@ function viewRenderers<Call>(tool: BuiltInTool, spec: ViewSpec<Call>): ToolView 
 			const own = piView();
 			const framed = own === undefined ? nothing() : boxed(own);
 			if (target === undefined && tool !== "edit") return framed;
-			return stacked(rowComponent(row, undefined, OWN_SEAT.line, theme), framed);
+			return stacked(rowComponent(row, undefined, theme), framed);
 		};
 
 		return selfShell(
@@ -255,12 +206,11 @@ function viewRenderers<Call>(tool: BuiltInTool, spec: ViewSpec<Call>): ToolView 
 				const memory = rowMemory(context);
 				memory.expanded = context.expanded;
 				startClock(context, now);
-				seatOf(spec.run, runs, context);
 				const input = toolInput(args);
 
 				if (context.isPartial) {
 					const row: ToolRow = { ...headingOf(tool, input, context.cwd), outcome: RUNNING };
-					return rowComponent(row, undefined, OWN_SEAT.line, theme);
+					return rowComponent(row, undefined, theme);
 				}
 				if (!context.expanded || context.isError || tool === "bash" || tool === "powershell") return nothing();
 				if (tool === "edit" || spec.preview?.target(spec.call(input)) !== undefined) return nothing();
@@ -275,7 +225,6 @@ function viewRenderers<Call>(tool: BuiltInTool, spec: ViewSpec<Call>): ToolView 
 				const memory = rowMemory(context);
 				memory.expanded = context.expanded;
 				settleClock(memory, now);
-				const seat = seatOf(spec.run, runs, context);
 				const input = toolInput(context.args);
 				const palette = renderPalette(theme);
 				let cached = results.get(memory);
@@ -304,14 +253,13 @@ function viewRenderers<Call>(tool: BuiltInTool, spec: ViewSpec<Call>): ToolView 
 				const outcome: RowOutcome = context.isError
 					? { kind: "failed", reason: spec.failure(shown.output) }
 					: settled(spec.detail(shown));
-				takeSeat(spec.run, seat, outcome);
 				const row: ToolRow = { ...headingOf(tool, input, context.cwd), outcome };
 
 				if (context.expanded) {
 					cached.expanded ??= expandedResult(row, shown, () => piResult(pi, result, options, theme, context), theme, input);
 					return cached.expanded;
 				}
-				cached.compact ??= rowComponent(row, undefined, seat.line, theme);
+				cached.compact ??= rowComponent(row, undefined, theme);
 				return cached.compact;
 			},
 		);
@@ -359,7 +307,6 @@ function firstLineOf(output: ToolOutput): string | undefined {
 }
 
 const READ: ViewSpec<ReadSpan> = {
-	run: "read",
 	call: readSpan,
 	detail: ({ call, output, details }) => {
 		if (output.image) return quiet("image");
@@ -379,7 +326,6 @@ const READ: ViewSpec<ReadSpan> = {
 };
 
 const RUN: ViewSpec<undefined> = {
-	run: "run",
 	call: ignoredInput,
 	detail: ({ output, details, elapsedMs }) => {
 		const answer = shortOutputLine(output);
@@ -394,7 +340,6 @@ const RUN: ViewSpec<undefined> = {
 };
 
 const EDIT: ViewSpec<undefined> = {
-	run: "interrupts",
 	call: ignoredInput,
 	detail: ({ diff }) => {
 		const summary = diff === undefined ? undefined : editSummary(diff);
@@ -405,7 +350,6 @@ const EDIT: ViewSpec<undefined> = {
 };
 
 const WRITE: ViewSpec<WrittenFile> = {
-	run: "interrupts",
 	call: writtenFile,
 	detail: ({ call }) => quiet(plural(countFileLines(call.content), "line", "lines")),
 	failure: firstLineOf,
@@ -416,7 +360,6 @@ const WRITE: ViewSpec<WrittenFile> = {
 };
 
 const GREP: ViewSpec<undefined> = {
-	run: "grep",
 	call: ignoredInput,
 	detail: ({ output, details }) => counted(plural(countMatches(output.body), "match", "matches"), details),
 	failure: firstLineOf,
@@ -424,7 +367,6 @@ const GREP: ViewSpec<undefined> = {
 };
 
 const FIND: ViewSpec<undefined> = {
-	run: "find",
 	call: ignoredInput,
 	detail: ({ output, details }) => counted(plural(countListed(output.body), "file", "files"), details),
 	failure: firstLineOf,
@@ -432,7 +374,6 @@ const FIND: ViewSpec<undefined> = {
 };
 
 const LIST: ViewSpec<undefined> = {
-	run: "list",
 	call: ignoredInput,
 	detail: ({ output, details }) => counted(plural(countListed(output.body), "entry", "entries"), details),
 	failure: firstLineOf,
@@ -458,8 +399,14 @@ export function registerToolViews(
 ): void {
 	pi.registerToolRenderer((toolName, next) => {
 		if (!showsZen()) return next();
-		if (toolName === CODEMODE) return codemodeRenderers(next(), showsZen, now);
+		if (toolName === CODEMODE) return groupedRenderers(toolName, codemodeRenderers(next(), showsZen, now), runs, showsZen, codemodeFailures);
+		const mcp = mcpToolName(toolName);
+		if (mcp !== undefined) return groupedRenderers(toolName, mcpRenderers(mcp, next(), showsZen, now), runs, showsZen);
 		const tool = builtInTool(toolName);
-		return tool === undefined ? next() : TOOL_VIEWS[tool](next(), runs, showsZen, now);
+		if (tool === undefined) {
+			runs.close();
+			return next();
+		}
+		return groupedRenderers(toolName, TOOL_VIEWS[tool](next(), showsZen, now), runs, showsZen);
 	});
 }
