@@ -65,24 +65,20 @@ function addTokens(left: TurnTokens, right: TurnTokens): TurnTokens {
 	return { input: left.input + right.input, output: left.output + right.output };
 }
 
-function accrue(timing: TurnTiming, now: number, waitPhase: TurnPhase): Accrued {
+function accrue(timing: TurnTiming, now: number): Accrued {
 	const totals = { thinkingMs: timing.thinkingMs, writingMs: timing.writingMs, committed: timing.committed };
 	if (timing.kind === "idle") return totals;
 
 	const spent = Math.max(0, now - (timing.kind === "waiting" ? timing.openedAt : timing.since));
-	const phase = timing.kind === "waiting" ? waitPhase : timing.phase;
+	const phase = timing.kind === "waiting" ? "thinking" : timing.phase;
 
 	return phase === "thinking"
 		? { ...totals, thinkingMs: totals.thinkingMs + spent }
 		: { ...totals, writingMs: totals.writingMs + spent };
 }
 
-function accrueAsThinking(timing: TurnTiming, now: number): Accrued {
-	return accrue(timing, now, "thinking");
-}
-
 function elapsed(timing: TurnTiming, now: number): TurnElapsed {
-	const totals = accrueAsThinking(timing, now);
+	const totals = accrue(timing, now);
 	return { thinkingMs: totals.thinkingMs, writingMs: totals.writingMs };
 }
 
@@ -95,7 +91,7 @@ function statusSegments(timing: TurnTiming, now: number): string[] {
 	const used = tokens(timing);
 
 	const segments: string[] = [];
-	if (spent.thinkingMs >= LEGIBLE_MS) segments.push(`${formatSeconds(spent.thinkingMs)} thinking`);
+	if (spent.thinkingMs >= LEGIBLE_MS) segments.push(`${formatSeconds(spent.thinkingMs)} reasoning / waiting`);
 	if (spent.writingMs >= LEGIBLE_MS) segments.push(`${formatSeconds(spent.writingMs)} writing`);
 	if (used.input > 0 || used.output > 0) {
 		segments.push(`↑${formatTokenCount(used.input)} ↓${formatTokenCount(used.output)}`);
@@ -118,7 +114,7 @@ export function beginRun(): TurnTiming {
 export function advance(timing: TurnTiming, signal: TurnSignal, now: number): TurnTiming {
 	switch (signal.kind) {
 		case "opened":
-			return { kind: "waiting", openedAt: now, live: NO_TOKENS, ...accrueAsThinking(timing, now) };
+			return { kind: "waiting", openedAt: now, live: NO_TOKENS, ...accrue(timing, now) };
 
 		case "producing": {
 			if (timing.kind === "streaming" && timing.phase === signal.phase) return { ...timing, live: signal.live };
@@ -128,17 +124,17 @@ export function advance(timing: TurnTiming, signal: TurnSignal, now: number): Tu
 				phase: signal.phase,
 				since: now,
 				live: signal.live,
-				...accrue(timing, now, signal.phase),
+				...accrue(timing, now),
 			};
 		}
 
 		case "committed": {
-			const totals = accrueAsThinking(timing, now);
+			const totals = accrue(timing, now);
 			return { kind: "idle", ...totals, committed: addTokens(totals.committed, signal.tokens) };
 		}
 
 		case "closed":
-			return { kind: "idle", ...accrueAsThinking(timing, now) };
+			return { kind: "idle", ...accrue(timing, now) };
 	}
 }
 

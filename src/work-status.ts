@@ -1,66 +1,83 @@
 import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 
-import type { TurnPhase } from "./turn-timing.ts";
 import type { UiPart } from "./ui-claim.ts";
 import {
 	activityPhrase,
-	STARTING_ACTIVITY,
+	startingActivity,
+	type ModelActivity,
 	type WorkActivity,
 	withoutTool,
-	withPhase,
+	withModel,
 	withTool,
 } from "./work-activity.ts";
 
 type WorkStatus = UiPart & {
 	readonly begin: () => void;
-	readonly phase: (phase: TurnPhase) => void;
+	readonly model: (activity: ModelActivity) => void;
 	readonly toolStarted: (id: string, label: string) => void;
 	readonly toolEnded: (id: string) => void;
 	readonly end: () => void;
 };
 
-type WorkLine =
-	| { readonly _tag: "Resting"; readonly ui: ExtensionUIContext }
-	| {
-			readonly _tag: "Working";
-			readonly ui: ExtensionUIContext;
-			readonly activity: WorkActivity;
-			readonly phrase: string;
-	  };
+export function createWorkStatus(now: () => number): WorkStatus {
+	let shownOn: ExtensionUIContext | undefined;
+	let activity: WorkActivity | undefined;
+	let previousPhrase: string | undefined;
+	let ticker: ReturnType<typeof setInterval> | undefined;
 
-export function createWorkStatus(): WorkStatus {
-	let line: WorkLine | undefined;
-
-	const work = (next: (activity: WorkActivity) => WorkActivity): void => {
-		if (line === undefined) return;
-		const { ui } = line;
-		const activity = next(line._tag === "Working" ? line.activity : STARTING_ACTIVITY);
-		const phrase = activityPhrase(activity);
-		if (line._tag === "Resting" || line.phrase !== phrase) ui.setWorkingMessage(ui.theme.fg("muted", phrase));
-		line = { _tag: "Working", ui, activity, phrase };
+	const stopTicking = (): void => {
+		if (ticker === undefined) return;
+		clearInterval(ticker);
+		ticker = undefined;
 	};
 
-	const rest = (): void => {
-		if (line === undefined) return;
-		line.ui.setWorkingMessage();
-		line = { _tag: "Resting", ui: line.ui };
+	const refresh = (): void => {
+		if (shownOn === undefined || activity === undefined) return;
+		const phrase = activityPhrase(activity, now());
+		if (previousPhrase !== phrase) shownOn.setWorkingMessage(shownOn.theme.fg("muted", phrase));
+		previousPhrase = phrase;
+	};
+
+	const startTicking = (): void => {
+		if (shownOn === undefined || activity === undefined || ticker !== undefined) return;
+		ticker = setInterval(refresh, 1000);
+		ticker.unref();
+	};
+
+	const work = (next: (activity: WorkActivity) => WorkActivity): void => {
+		if (activity === undefined) return;
+		activity = next(activity);
+		refresh();
 	};
 
 	return {
 		show: (ui) => {
-			if (line?.ui !== ui) line = { _tag: "Resting", ui };
+			shownOn = ui;
+			previousPhrase = undefined;
+			refresh();
+			startTicking();
 		},
 		hide: (ui) => {
-			line = undefined;
+			stopTicking();
+			shownOn = undefined;
+			previousPhrase = undefined;
 			ui.setWorkingMessage();
 		},
 		begin: () => {
-			if (line !== undefined) line = { _tag: "Resting", ui: line.ui };
-			work(() => STARTING_ACTIVITY);
+			stopTicking();
+			activity = startingActivity(now());
+			previousPhrase = undefined;
+			refresh();
+			startTicking();
 		},
-		phase: (phase) => work((activity) => withPhase(activity, phase)),
-		toolStarted: (id, label) => work((activity) => withTool(activity, id, label)),
-		toolEnded: (id) => work((activity) => withoutTool(activity, id)),
-		end: rest,
+		model: (model) => work((current) => withModel(current, model, now())),
+		toolStarted: (id, label) => work((current) => withTool(current, id, label)),
+		toolEnded: (id) => work((current) => withoutTool(current, id, now())),
+		end: () => {
+			stopTicking();
+			activity = undefined;
+			previousPhrase = undefined;
+			shownOn?.setWorkingMessage();
+		},
 	};
 }
