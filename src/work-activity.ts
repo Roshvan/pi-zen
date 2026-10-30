@@ -3,6 +3,8 @@ import type { MessageUpdateEvent } from "@earendil-works/pi-coding-agent";
 type ToolCall = {
 	readonly id: string;
 	readonly label: string;
+	readonly startedAt: number;
+	readonly parentId: string | undefined;
 };
 
 export type ModelActivity = "waiting" | "reasoning" | "reasoning-unavailable" | "writing";
@@ -53,8 +55,9 @@ export function withoutTool(activity: WorkActivity, id: string, now: number): Wo
 		: { ...activity, tools };
 }
 
-export function withTool(activity: WorkActivity, id: string, label: string): WorkActivity {
-	return { ...activity, tools: [...activity.tools.filter((tool) => tool.id !== id), { id, label }] };
+export function withTool(activity: WorkActivity, id: string, label: string, now: number, parentId: string | undefined): WorkActivity {
+	const startedAt = activity.tools.find((tool) => tool.id === id)?.startedAt ?? now;
+	return { ...activity, tools: [...activity.tools.filter((tool) => tool.id !== id), { id, label, startedAt, parentId }] };
 }
 
 export function activityPhrase(activity: WorkActivity, now: number): string {
@@ -68,7 +71,12 @@ export function activityPhrase(activity: WorkActivity, now: number): string {
 			case "writing": return "writing";
 		}
 	}
-	const counts = new Map<string, number>();
-	for (const tool of [...activity.tools].reverse()) counts.set(tool.label, (counts.get(tool.label) ?? 0) + 1);
-	return [...counts].map(([label, count]) => count === 1 ? label : `${label} (${count})`).join(" · ");
+	// A coordinating tool is not an additional parallel task while its children run.
+	const parents = new Set(activity.tools.map((tool) => tool.parentId));
+	const running = activity.tools.filter((tool) => !parents.has(tool.id));
+	const active = running.at(-1);
+	if (active === undefined) return "waiting for response";
+	const seconds = Math.floor(Math.max(0, now - active.startedAt) / 1000);
+	const others = running.length - 1;
+	return `${active.label} · ${seconds}s${others > 0 ? ` · +${others} running` : ""}`;
 }
