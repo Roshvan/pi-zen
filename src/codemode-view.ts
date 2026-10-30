@@ -109,7 +109,7 @@ export function codemodeRenderers(pi: ToolRenderers | undefined, showsZen: () =>
 			if (options.isPartial) {
 				const run = scriptRun(code, { kind: "running", result }, context.cwd);
 				if (context.expanded) return scriptView(run, "steps", theme);
-				return codemodeFailures(result) > 0 ? scriptView(run, "failures", theme) : nothing();
+				return scriptView(run, codemodeFailures(result) > 0 ? "failures" : "row", theme);
 			}
 			const memory = rowMemory(context);
 			settleClock(memory, now);

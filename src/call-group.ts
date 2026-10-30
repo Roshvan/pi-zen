@@ -15,6 +15,7 @@ type Member = {
 type Run = {
 	readonly members: Member[];
 	expanded: boolean;
+	latestSuccess: Member | undefined;
 };
 
 type Seat = {
@@ -42,7 +43,7 @@ export function createCallRuns(rebuild: () => void = () => {}): CallRuns {
 				if (owner !== undefined) existing.member.owner = owner;
 				return existing;
 			}
-			open ??= { members: [], expanded: false };
+			open ??= { members: [], expanded: false, latestSuccess: undefined };
 			const member: Member = { name, owner, hasResult: false, failures: 0, running: true };
 			open.members.push(member);
 			const seat = { run: open, member };
@@ -85,7 +86,7 @@ function groupedView(seat: Seat, own: Component, slot: "call" | "result", theme:
 			const first = run.members[0] === member;
 			const room = width - padding.length * 2 - 1;
 			const head = first && room > 0 ? [padding + summary(run, run.expanded || context.expanded, room, theme)] : [];
-			if (!run.expanded && !context.expanded && member.failures === 0) return head;
+			if (!run.expanded && !context.expanded && member.failures === 0 && !member.running && member !== run.latestSuccess) return head;
 			const indent = "  ";
 			const body = width > indent.length ? own.render(width - indent.length).map((line) => indent + line) : [];
 			return [...head, ...body];
@@ -122,9 +123,11 @@ export function groupedRenderers(
 			const own = view.renderResult?.(result, options, theme, context) ?? nothing();
 			if (!showsZen()) return own;
 			const seat = runs.join(context.toolCallId, name, ownerOf(context));
+			const wasRunning = seat.member.running;
 			seat.member.hasResult = true;
 			seat.member.running = options.isPartial;
 			seat.member.failures = Math.max(context.isError ? 1 : 0, failures(result));
+			if (wasRunning && !options.isPartial && seat.member.failures === 0) seat.run.latestSuccess = seat.member;
 			return groupedView(seat, own, "result", theme, context);
 		},
 	};

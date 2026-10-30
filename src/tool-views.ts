@@ -220,7 +220,11 @@ function viewRenderers<Call>(tool: BuiltInTool, spec: ViewSpec<Call>): ToolView 
 				if (!showsZen()) return piResult(pi, result, options, theme, context) ?? nothing();
 				// Pi rebuilds tools before Zen's render-time theme follower can quiet a new palette.
 				quietLiveTheme();
-				if (options.isPartial) return context.expanded ? streamingTail(toolOutput(result.content), theme) : nothing();
+				if (options.isPartial) {
+					const row: ToolRow = { ...headingOf(tool, toolInput(context.args), context.cwd), outcome: RUNNING };
+					const head = rowComponent(row, undefined, theme);
+					return context.expanded ? stacked(head, streamingTail(toolOutput(result.content), theme)) : head;
+				}
 
 				const memory = rowMemory(context);
 				memory.expanded = context.expanded;

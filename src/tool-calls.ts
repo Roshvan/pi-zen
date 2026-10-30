@@ -8,6 +8,8 @@ import type {
 	WriteToolInput,
 } from "@earendil-works/pi-coding-agent";
 
+import { truncateToWidth } from "@earendil-works/pi-tui";
+
 import { scriptNote } from "./codemode-script.ts";
 import { displayPath } from "./display-path.ts";
 import type { RowSubject } from "./tool-row.ts";
@@ -158,7 +160,19 @@ export function labelToolCall(name: string, input: ToolInput, cwd: string): stri
 	return headingLabel(callHeading(name, input, cwd));
 }
 
-export function workLabel(name: string, input: ToolInput): string {
+export function workLabel(name: string, input: ToolInput, cwd: string): string {
+	const heading = callHeading(name, input, cwd);
+	const command = name === "bash" || name === "powershell" ? presentText(input.command) : undefined;
+	const subject = command === undefined ? heading.subject?.text : firstLine(command);
+	const phrase = workVerb(name, input);
+	const label = subject === undefined || name === CODEMODE || mcpToolName(name) !== undefined
+		? phrase
+		: `${phrase} ${subject}`;
+	// Leave room for the indicator, elapsed time, and parallel count in an 80-column pane.
+	return truncateToWidth(label, 52, "…");
+}
+
+function workVerb(name: string, input: ToolInput): string {
 	if (name === CODEMODE) return scriptNote(scriptSource(input)) ?? "running a script";
 	switch (builtInTool(name)) {
 		case "read": return "reading";
@@ -166,9 +180,9 @@ export function workLabel(name: string, input: ToolInput): string {
 		case "find": return "searching";
 		case "ls": return "listing files";
 		case "edit": return "editing";
-		case "write": return "writing files";
+		case "write": return "writing";
 		case "bash":
-		case "powershell": return "running a command";
+		case "powershell": return "running";
 		case undefined: return displayToolName(name);
 	}
 }

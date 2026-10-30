@@ -14,7 +14,7 @@ import {
 type WorkStatus = UiPart & {
 	readonly begin: () => void;
 	readonly model: (activity: ModelActivity) => void;
-	readonly toolStarted: (id: string, label: string) => void;
+	readonly toolStarted: (id: string, label: string, parentId: string | undefined) => void;
 	readonly toolEnded: (id: string) => void;
 	readonly end: () => void;
 };
@@ -71,7 +71,7 @@ export function createWorkStatus(now: () => number): WorkStatus {
 			startTicking();
 		},
 		model: (model) => work((current) => withModel(current, model, now())),
-		toolStarted: (id, label) => work((current) => withTool(current, id, label)),
+		toolStarted: (id, label, parentId) => work((current) => withTool(current, id, label, now(), parentId)),
 		toolEnded: (id) => work((current) => withoutTool(current, id, now())),
 		end: () => {
 			stopTicking();

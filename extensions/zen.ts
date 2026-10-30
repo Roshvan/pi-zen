@@ -26,7 +26,7 @@ export default function zen(pi: ExtensionAPI): void {
 	});
 	const history = carriedPromptHistory();
 	const turnStatus = createTurnStatus(Date.now);
-	const workStatus = createWorkStatus(Date.now);
+	const workStatus = createWorkStatus(() => performance.now());
 	const themeFollow = createThemeFollow();
 	let cwd = process.cwd();
 	let hasSpoken = false;
@@ -117,7 +117,7 @@ export default function zen(pi: ExtensionAPI): void {
 	});
 
 	pi.on("tool_execution_start", (event) => {
-		workStatus.toolStarted(event.toolCallId, workLabel(event.toolName, toolInput(event.args)));
+		workStatus.toolStarted(event.toolCallId, workLabel(event.toolName, toolInput(event.args), cwd), event.parentToolCallId);
 	});
 
 	pi.on("tool_execution_end", (event) => {
